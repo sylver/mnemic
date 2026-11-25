@@ -4,7 +4,11 @@ expression: stdout
 ---
 Mnemic
 
-Usage: mnemic
+Usage: mnemic <COMMAND>
+
+Commands:
+  check  Check core frontmatter in a vault or one note
+  help   Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help

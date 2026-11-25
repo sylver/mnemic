@@ -8,7 +8,7 @@ A change is done when these commands pass on a clean tree.
 - `cargo clippy --all-targets -- -D warnings`
 - `cargo test --locked`
 
-Later work adds contract snapshots to that list.
+`cargo test --locked` includes the contract drift test. It fails when `docs/contract/check.schema.json` or `docs/contract/check.md` differ from the envelope types. A later verb extends those types, regenerates both files, and updates the `--json` snapshots in the same change.
 
 ## Where to look
 

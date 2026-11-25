@@ -1,0 +1,12 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": true,
+  "data": {
+    "errors": [],
+    "warnings": []
+  },
+  "error": null
+}

@@ -1,0 +1,13 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "BAD_CONFIG",
+    "message": "schema_version must be an integer this CLI supports",
+    "details": {}
+  }
+}

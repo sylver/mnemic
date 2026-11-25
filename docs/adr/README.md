@@ -3,6 +3,7 @@
 | ADR | Title | Status |
 | --- | ----- | ------ |
 | [0001](0001-advisory-write-lock.md) | Advisory write lock and durable rename | Accepted |
+| [0001](0001-check-contract.md) | Check envelope and note file set | Accepted |
 
 ## Rules
 

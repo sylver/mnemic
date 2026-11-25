@@ -1,0 +1,13 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "VAULT_NOT_FOUND",
+    "message": "no mnemic.toml found",
+    "details": {}
+  }
+}

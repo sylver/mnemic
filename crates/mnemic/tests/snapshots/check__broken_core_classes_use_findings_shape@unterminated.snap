@@ -1,0 +1,22 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "BAD_FRONTMATTER",
+        "message": "frontmatter has an unterminated --- fence",
+        "path": "unterminated/note.md"
+      }
+    ],
+    "warnings": []
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 1 error",
+    "details": {}
+  }
+}
