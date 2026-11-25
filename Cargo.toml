@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["crates/mnemic-core", "crates/mnemic"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+rust-version = "1.100.0"

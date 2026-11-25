@@ -1,0 +1,23 @@
+---
+description: pstack per-role model choices
+alwaysApply: true
+---
+
+# defaults: 2
+# budget: custom (team cost policy). Never use xhigh, max or fast variants for subagents.
+
+feature, refactoring: inherit-parent
+bug-fix: inherit-parent
+perf-issue: inherit-parent
+hillclimb: inherit-parent
+judgment and prose: inherit-parent
+hardest tasks: inherit-parent
+reflect tooling: inherit-parent
+reflect judgment: inherit-parent
+divergent: inherit-parent
+synthesizer: inherit-parent
+arena runners: inherit-parent
+arena cross-judge pool: inherit-parent
+swarm workers: inherit-parent
+architect runners: inherit-parent
+interrogate reviewers: inherit-parent
