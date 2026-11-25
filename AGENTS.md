@@ -15,6 +15,11 @@ Later work adds contract snapshots to that list.
 - Coding standards are in [docs/coding-standards.md](docs/coding-standards.md).
 - Pull requests use [.github/pull_request_template.md](.github/pull_request_template.md).
 - Architecture decisions are in [docs/adr](docs/adr/README.md).
+- Vault writes use [docs/write-primitive.md](docs/write-primitive.md).
+
+## Writes
+
+Use `with_write_lock`. Resolve the target inside it. Do not invent a write path. The lock and the rename are local filesystems only. External writers bypass the lock.
 
 ## Fixtures
 
