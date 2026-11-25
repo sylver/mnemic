@@ -109,6 +109,36 @@ fn one_note_keeps_the_version_gate_and_limits_findings() {
 }
 
 #[test]
+fn broken_type_classes_use_findings_shape() {
+    for class in [
+        "unknown-type",
+        "missing-field",
+        "alias-contact",
+        "alias-phone",
+        "schema-version-ahead",
+    ] {
+        let stdout = assert_json(
+            &["check", &format!("fixtures/broken-type/{class}"), "--json"],
+            2,
+        );
+        insta::with_settings!({ snapshot_suffix => class }, {
+            insta::assert_snapshot!(stdout);
+        });
+    }
+}
+
+#[test]
+fn invalid_pack_uses_the_findings_shape() {
+    let err = mnemic_core::load_pack([("person", "folder = [")]).expect_err("pack");
+    let envelope =
+        mnemic_core::findings_envelope(vec![mnemic_core::invalid_pack_finding(&err)], Vec::new());
+    let stdout = mnemic_core::to_json(&envelope).expect("json");
+    assert!(stdout.contains("\"INVALID_PACK\""));
+    assert!(stdout.contains("\"CHECK_FAILED\""));
+    insta::assert_snapshot!(stdout);
+}
+
+#[test]
 fn unknown_check_flag_is_rejected() {
     let output = run(&["check", "--fix"]);
     assert_eq!(output.status.code(), Some(2));

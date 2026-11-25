@@ -1,0 +1,11 @@
+schema_version = 1
+folder = "topics"
+timeline = false
+
+[state]
+values = ["active", "archived"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false

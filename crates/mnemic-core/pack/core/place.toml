@@ -1,0 +1,16 @@
+schema_version = 1
+folder = "places"
+timeline = false
+
+[state]
+values = ["current", "former"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false
+
+[[field]]
+name = "address"
+type = "string"
+required = false

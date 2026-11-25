@@ -1,0 +1,16 @@
+schema_version = 1
+folder = "orgs"
+timeline = false
+
+[state]
+values = ["active", "dissolved"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false
+
+[[field]]
+name = "url"
+type = "string"
+required = false

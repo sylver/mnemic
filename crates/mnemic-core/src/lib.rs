@@ -5,18 +5,22 @@ use thiserror::Error;
 mod check;
 mod clock;
 mod contract;
+mod edit;
 mod frontmatter;
+mod pack;
 mod ulid;
 mod vault;
 pub mod write;
 
-pub use check::{check_path, is_note, CheckFatal};
+pub use check::{check_path, invalid_pack_finding, is_note, CheckFatal};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use contract::{
     exit_code, fatal_envelope, findings_envelope, render_contract, success_envelope, to_json,
     CheckData, CheckEnvelope, EnvelopeCode, ErrorObject, Finding, FindingCode,
 };
+pub use edit::{EditError, FrontmatterEdit};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
+pub use pack::{core_pack, load_pack, FieldDef, FieldKind, Pack, PackError, TypeDef};
 pub use ulid::{is_ulid, UlidGenerator};
 pub use vault::{load_vault, open_vault, Vault, VaultError, SUPPORTED_VAULT_SCHEMA_VERSION};
 

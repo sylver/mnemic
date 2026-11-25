@@ -1,0 +1,11 @@
+schema_version = 1
+folder = "ideas"
+timeline = false
+
+[state]
+values = ["open", "parked", "adopted"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false

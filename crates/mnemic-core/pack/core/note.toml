@@ -1,0 +1,11 @@
+schema_version = 1
+folder = ["inbox", "notes"]
+timeline = false
+
+[state]
+values = ["open", "filed"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false

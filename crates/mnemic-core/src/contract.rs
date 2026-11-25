@@ -41,6 +41,14 @@ pub enum FindingCode {
     BadId,
     #[serde(rename = "MISSING_FIELD")]
     MissingField,
+    #[serde(rename = "UNKNOWN_TYPE")]
+    UnknownType,
+    #[serde(rename = "ALIAS_CONTACT")]
+    AliasContact,
+    #[serde(rename = "SCHEMA_VERSION_AHEAD")]
+    SchemaVersionAhead,
+    #[serde(rename = "INVALID_PACK")]
+    InvalidPack,
 }
 
 /// Codes on `error.code`. Findings use `CHECK_FAILED`. The rest are fatal.
@@ -133,7 +141,8 @@ fn render_markdown() -> String {
          ## Envelope\n\n\
          `mnemic check --json` prints one JSON document.\n\n\
          A clean tree is `ok: true`, `data.errors` and `data.warnings` empty, `error: null`, exit 0.\n\n\
-         Findings (`BAD_ID`, `MISSING_FIELD`, `BAD_FRONTMATTER`, and later check codes) use \
+         Findings (`BAD_ID`, `MISSING_FIELD`, `BAD_FRONTMATTER`, `UNKNOWN_TYPE`, \
+         `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`) use \
          `ok: false`, `data` with those findings, and `error.code` `CHECK_FAILED`. Exit 2.\n\n\
          Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. \
          `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, and `UNSUPPORTED_VAULT_VERSION` are fatal. \
@@ -163,8 +172,12 @@ fn render_markdown() -> String {
          | Code | Meaning |\n\
          | --- | --- |\n\
          | `BAD_ID` | `id` is present and is not a 26-character ULID |\n\
-         | `MISSING_FIELD` | A required core field is absent |\n\
-         | `BAD_FRONTMATTER` | No frontmatter, a non-mapping, a duplicate YAML key, an unterminated `---` fence, or a present core field with an invalid value |\n\n\
+         | `MISSING_FIELD` | A required core field is absent, a source note has neither `path` nor `url`, or a required type field such as journal `date` is absent |\n\
+         | `BAD_FRONTMATTER` | No frontmatter, a non-mapping, a duplicate YAML key, an unterminated `---` fence, or a present core field with an invalid value |\n\
+         | `UNKNOWN_TYPE` | `type` is not in the loaded pack |\n\
+         | `ALIAS_CONTACT` | An `aliases` entry is an email address or a phone number |\n\
+         | `SCHEMA_VERSION_AHEAD` | The note `schema_version` is newer than the loaded type |\n\
+         | `INVALID_PACK` | A type pack file is missing a required key or is not valid TOML |\n\n\
          The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n",
     );
     out

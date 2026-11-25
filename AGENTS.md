@@ -21,6 +21,8 @@ A change is done when these commands pass on a clean tree.
 
 Use `with_write_lock`. Resolve the target inside it. Do not invent a write path. The lock and the rename are local filesystems only. External writers bypass the lock.
 
+`FrontmatterEdit` returns bytes. It does not write files. Pass those bytes to `WriteTxn::atomic_write` inside `with_write_lock`. Do not round-trip frontmatter through a YAML serializer.
+
 ## Fixtures
 
 Put shared test inputs in `fixtures/`. `fixtures/.gitkeep` keeps the directory in git until the first fixture lands.
