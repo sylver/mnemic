@@ -1,0 +1,11 @@
+---
+source: crates/mnemic/tests/cli.rs
+expression: stdout
+---
+Mnemic
+
+Usage: mnemic
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version

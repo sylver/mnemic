@@ -1,0 +1,14 @@
+[package]
+name = "mnemic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+insta = "1"
+tempfile = "3"
