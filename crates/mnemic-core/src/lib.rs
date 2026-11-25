@@ -28,3 +28,12 @@ mod tests {
         assert_eq!(require_non_empty("name", "mnemic"), Ok("mnemic"));
     }
 }
+
+fn clippy_and_fmt() {
+let value = 1;
+    if value == 1 {
+    if value == 1 {
+        let _kept = value;
+    }
+    }
+}
