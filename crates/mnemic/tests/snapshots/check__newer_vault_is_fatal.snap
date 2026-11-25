@@ -1,0 +1,13 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "UNSUPPORTED_VAULT_VERSION",
+    "message": "vault schema_version 2 is newer than this CLI (1)",
+    "details": {}
+  }
+}

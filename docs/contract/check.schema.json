@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CheckEnvelope",
+  "description": "Top-level `mnemic check --json` document.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CheckData"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ErrorObject"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "$defs": {
+    "CheckData": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Finding"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Finding"
+          }
+        }
+      },
+      "required": [
+        "errors",
+        "warnings"
+      ]
+    },
+    "EnvelopeCode": {
+      "description": "Codes on `error.code`. Findings use `CHECK_FAILED`. The rest are fatal.",
+      "type": "string",
+      "enum": [
+        "BAD_CONFIG",
+        "CHECK_FAILED",
+        "IO",
+        "LOCK_HELD",
+        "UNSUPPORTED_VAULT_VERSION",
+        "USAGE",
+        "VAULT_NOT_FOUND"
+      ]
+    },
+    "ErrorObject": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/EnvelopeCode"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "details"
+      ]
+    },
+    "Finding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/FindingCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "path"
+      ]
+    },
+    "FindingCode": {
+      "description": "Per-note and later vault-wide check codes. These appear in `data.errors`.",
+      "type": "string",
+      "enum": [
+        "BAD_FRONTMATTER",
+        "BAD_ID",
+        "MISSING_FIELD"
+      ]
+    }
+  }
+}

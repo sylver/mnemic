@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mnemic_core::write::{with_write_lock, DEFAULT_LOCK_TIMEOUT};
-use mnemic_core::Error;
+use mnemic_core::{exit_code, EnvelopeCode, Error};
 
 #[test]
 fn write_lock_worker() {
@@ -222,7 +222,7 @@ fn child_increment() -> i32 {
         txn.atomic_write(&file, (value + 1).to_string().as_bytes())
     }) {
         Ok(()) => 0,
-        Err(Error::LockHeld { .. }) => 75,
+        Err(Error::LockHeld { .. }) => exit_code(EnvelopeCode::LockHeld),
         Err(error) => {
             eprintln!("{error}");
             1
@@ -239,7 +239,7 @@ fn child_hold() -> i32 {
         Ok(())
     }) {
         Ok(()) => 0,
-        Err(Error::LockHeld { .. }) => 75,
+        Err(Error::LockHeld { .. }) => exit_code(EnvelopeCode::LockHeld),
         Err(error) => {
             eprintln!("{error}");
             1
@@ -253,7 +253,7 @@ fn child_crash() -> i32 {
         txn.crash_before_rename(&file, b"replacement")
     }) {
         Ok(()) => 0,
-        Err(Error::LockHeld { .. }) => 75,
+        Err(Error::LockHeld { .. }) => exit_code(EnvelopeCode::LockHeld),
         Err(error) => {
             eprintln!("{error}");
             1
