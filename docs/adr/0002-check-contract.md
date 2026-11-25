@@ -1,4 +1,4 @@
-# ADR-0001: Check envelope and note file set
+# ADR-0002: Check envelope and note file set
 
 ## Status
 
