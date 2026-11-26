@@ -88,7 +88,12 @@ jobs:
         run: |
           bin="target/${{ matrix.target }}/release/mnemic"
           file "$bin" | tee "$RUNNER_TEMP/file.txt"
-          grep -F "statically linked" "$RUNNER_TEMP/file.txt"
+          # Ubuntu 26.04 file(1) prints "static-pie linked" for a static PIE.
+          grep -E "statically linked|static-pie linked" "$RUNNER_TEMP/file.txt"
+          if grep -F "dynamically linked" "$RUNNER_TEMP/file.txt"; then
+            echo "musl binary is dynamically linked" >&2
+            exit 1
+          fi
       - name: Run --help and --version with no Rust on PATH
         run: |
           set -euo pipefail
@@ -153,7 +158,12 @@ jobs:
         run: |
           bin="target/${{ matrix.target }}/release/mnemic"
           file "$bin" | tee "$RUNNER_TEMP/file.txt"
-          grep -F "statically linked" "$RUNNER_TEMP/file.txt"
+          # Ubuntu 26.04 file(1) prints "static-pie linked" for a static PIE.
+          grep -E "statically linked|static-pie linked" "$RUNNER_TEMP/file.txt"
+          if grep -F "dynamically linked" "$RUNNER_TEMP/file.txt"; then
+            echo "musl binary is dynamically linked" >&2
+            exit 1
+          fi
       - name: Checksum and upload
         run: |
           set -euo pipefail
