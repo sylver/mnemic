@@ -93,6 +93,23 @@
         "code": {
           "$ref": "#/$defs/FindingCode"
         },
+        "link": {
+          "description": "Wikilink or typed-link text when `code` is `AMBIGUOUS`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matches": {
+          "description": "Sorted candidate paths when `code` is `AMBIGUOUS`.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
         "message": {
           "type": "string"
         },
@@ -116,7 +133,14 @@
         "UNKNOWN_TYPE",
         "ALIAS_CONTACT",
         "SCHEMA_VERSION_AHEAD",
-        "INVALID_PACK"
+        "INVALID_PACK",
+        "DUPLICATE_ID",
+        "ALIAS_NOT_UNIQUE",
+        "SUPERSEDED_WITHOUT_INCOMING",
+        "SUPERSEDES_CYCLE",
+        "BROKEN_LINK",
+        "SHA256_DRIFT",
+        "AMBIGUOUS"
       ]
     }
   }

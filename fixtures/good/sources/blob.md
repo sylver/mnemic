@@ -9,7 +9,7 @@ created_by: sylver
 status: active
 state: unread
 path: sources/raw/blob.md
-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+sha256: ec0e94fbafe21abe809d4999f90fb6caa42db3fe498081d41d4192b3cae33181
 ---
 
 A source.

@@ -56,9 +56,34 @@ Unknown keys are kept and are not validated. `status` is not a per-type state fi
 
 ## Body
 
-Text after the closing fence is the body. A `## Timeline` section is the place for later events. `check` does not read the body.
+Text after the closing fence is the body. A `## Timeline` section is the place for later events. `check` reads the body only for wikilinks.
 
-A wikilink is `[[ULID]]` or `[[ULID|label]]`. This version does not resolve links.
+## Identity
+
+A note has one `id`. Two files with the same `id` are `DUPLICATE_ID`. `aliases` is a list of strings. The same alias on two ids, compared case-insensitively after NFC normalization, is `ALIAS_NOT_UNIQUE`. An alias is not an email address or a phone number (`ALIAS_CONTACT`).
+
+`supersedes` is a string or a list of strings. Each entry is a link target. `status: superseded` with no other note whose `supersedes` resolves to this note is `SUPERSEDED_WITHOUT_INCOMING`. A cycle in those edges is `SUPERSEDES_CYCLE`. Backlinks are computed from these edges. They are not written into Markdown files.
+
+## Resolver
+
+`VaultIndex::resolve` in `mnemic-core` is the one wikilink resolver. `check` uses it. Later verbs call the same method.
+
+Resolution order:
+
+1. Vault-relative path, with or without `.md`.
+2. Exact `id`. A link to a ULID is valid.
+3. Exact filename slug, the basename without `.md`.
+4. Exact alias.
+
+Slug and alias matching is case-insensitive after NFC normalization. The resolver does not guess. Two filename slugs such as `people/sam.md` and `orgs/sam.md` may both exist. A bare `[[sam]]` that hits more than one is `AMBIGUOUS`. `error.details.candidates` lists `path`, `link`, and `matches`. `[[people/sam]]` is a path first, then falls through the rest of the order.
+
+A wikilink is `[[target]]`, `[[target|label]]`, `[[target#heading]]`, or an embed `![[target]]`. `[[target#heading]]` does not require the heading to exist. `![[image.png]]` and any link to a non-`.md` file are valid when that file exists, and `BROKEN_LINK` when it does not. Wikilinks inside fenced code or inline code are not links. A `[` preceded by an odd number of backslashes does not open a wikilink, so `\[\[x]]` is not a link.
+
+Typed frontmatter fields with a pack `target`, and `supersedes`, are edges through the same resolver. A target that does not resolve is `BROKEN_LINK`.
+
+## Raw bytes
+
+A `source` note may set `path` to a vault-relative raw file and `sha256` to the hex digest of that file. When both are set, `check` hashes the file. A mismatch, a missing file, or a path that is not a regular file inside the vault is `SHA256_DRIFT`. `check` does not read a file outside the vault. A symlink is hashed only when its canonical path is a regular file inside the vault. `sha256` is not required for a source note to pass.
 
 ## Type pack
 

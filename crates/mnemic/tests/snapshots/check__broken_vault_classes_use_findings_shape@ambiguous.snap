@@ -1,0 +1,38 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "AMBIGUOUS",
+        "message": "wikilink sam matches ambiguous/orgs/sam.md, ambiguous/people/sam.md",
+        "path": "ambiguous/notes/link.md",
+        "link": "sam",
+        "matches": [
+          "ambiguous/orgs/sam.md",
+          "ambiguous/people/sam.md"
+        ]
+      }
+    ],
+    "warnings": []
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 1 error",
+    "details": {
+      "candidates": [
+        {
+          "link": "sam",
+          "matches": [
+            "ambiguous/orgs/sam.md",
+            "ambiguous/people/sam.md"
+          ],
+          "path": "ambiguous/notes/link.md"
+        }
+      ]
+    }
+  }
+}

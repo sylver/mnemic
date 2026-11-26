@@ -23,6 +23,12 @@ pub struct Finding {
     pub code: FindingCode,
     pub message: String,
     pub path: String,
+    /// Wikilink or typed-link text when `code` is `AMBIGUOUS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
+    /// Sorted candidate paths when `code` is `AMBIGUOUS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matches: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -49,6 +55,20 @@ pub enum FindingCode {
     SchemaVersionAhead,
     #[serde(rename = "INVALID_PACK")]
     InvalidPack,
+    #[serde(rename = "DUPLICATE_ID")]
+    DuplicateId,
+    #[serde(rename = "ALIAS_NOT_UNIQUE")]
+    AliasNotUnique,
+    #[serde(rename = "SUPERSEDED_WITHOUT_INCOMING")]
+    SupersededWithoutIncoming,
+    #[serde(rename = "SUPERSEDES_CYCLE")]
+    SupersedesCycle,
+    #[serde(rename = "BROKEN_LINK")]
+    BrokenLink,
+    #[serde(rename = "SHA256_DRIFT")]
+    Sha256Drift,
+    #[serde(rename = "AMBIGUOUS")]
+    Ambiguous,
 }
 
 /// Codes on `error.code`. Findings use `CHECK_FAILED`. The rest are fatal.
@@ -96,7 +116,11 @@ pub fn success_envelope() -> CheckEnvelope {
     }
 }
 
-pub fn findings_envelope(mut errors: Vec<Finding>, warnings: Vec<Finding>) -> CheckEnvelope {
+pub fn findings_envelope(
+    mut errors: Vec<Finding>,
+    warnings: Vec<Finding>,
+    details: BTreeMap<String, Value>,
+) -> CheckEnvelope {
     errors.sort_by(|a, b| (&a.path, &a.code, &a.message).cmp(&(&b.path, &b.code, &b.message)));
     let count = errors.len();
     let label = if count == 1 { "error" } else { "errors" };
@@ -106,7 +130,7 @@ pub fn findings_envelope(mut errors: Vec<Finding>, warnings: Vec<Finding>) -> Ch
         error: Some(ErrorObject {
             code: EnvelopeCode::CheckFailed,
             message: format!("check found {count} {label}"),
-            details: BTreeMap::new(),
+            details,
         }),
     }
 }
@@ -145,7 +169,9 @@ fn render_markdown() -> String {
          `mnemic check --json` prints one JSON document.\n\n\
          A clean tree is `ok: true`, `data.errors` and `data.warnings` empty, `error: null`, exit 0.\n\n\
          Findings (`BAD_ID`, `MISSING_FIELD`, `BAD_FRONTMATTER`, `UNKNOWN_TYPE`, \
-         `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`) use \
+         `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`, `DUPLICATE_ID`, \
+         `ALIAS_NOT_UNIQUE`, `SUPERSEDED_WITHOUT_INCOMING`, `SUPERSEDES_CYCLE`, \
+         `BROKEN_LINK`, `SHA256_DRIFT`, `AMBIGUOUS`) use \
          `ok: false`, `data` with those findings, and `error.code` `CHECK_FAILED`. Exit 2.\n\n\
          Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. \
          `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and \
@@ -182,7 +208,14 @@ fn render_markdown() -> String {
          | `UNKNOWN_TYPE` | `type` is not in the loaded pack |\n\
          | `ALIAS_CONTACT` | An `aliases` entry is an email address or a phone number |\n\
          | `SCHEMA_VERSION_AHEAD` | The note `schema_version` is newer than the loaded type |\n\
-         | `INVALID_PACK` | A type pack file is missing a required key, is not valid TOML, or is a symlink or path outside the vault |\n\n\
+         | `INVALID_PACK` | A type pack file is missing a required key, is not valid TOML, or is a symlink or path outside the vault |\n\
+         | `DUPLICATE_ID` | Two notes use one `id` |\n\
+         | `ALIAS_NOT_UNIQUE` | One alias, after NFC case-folding, maps to two ids |\n\
+         | `SUPERSEDED_WITHOUT_INCOMING` | `status` is `superseded` and no other note points at it with `supersedes` |\n\
+         | `SUPERSEDES_CYCLE` | `supersedes` links form a cycle |\n\
+         | `BROKEN_LINK` | A wikilink, embed, typed link, or `supersedes` target does not resolve |\n\
+         | `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path`, or `path` is not a regular file inside the vault |\n\
+         | `AMBIGUOUS` | A link matches more than one note. `error.details.candidates` lists `path`, `link`, and `matches` |\n\n\
          The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n",
     );
     out

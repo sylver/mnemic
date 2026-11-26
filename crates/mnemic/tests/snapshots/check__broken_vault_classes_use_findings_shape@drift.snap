@@ -1,0 +1,22 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "SHA256_DRIFT",
+        "message": "sha256 does not match sources/raw/drift.bin",
+        "path": "drift/source.md"
+      }
+    ],
+    "warnings": []
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 1 error",
+    "details": {}
+  }
+}

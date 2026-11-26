@@ -1,0 +1,22 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "SUPERSEDES_CYCLE",
+        "message": "supersedes cycle cycle/left.md -> cycle/right.md -> cycle/left.md",
+        "path": "cycle/left.md"
+      }
+    ],
+    "warnings": []
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 1 error",
+    "details": {}
+  }
+}

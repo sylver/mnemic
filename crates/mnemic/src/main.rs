@@ -128,9 +128,9 @@ fn check(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>) -> ExitCode 
             fatal_envelope(EnvelopeCode::Io, message),
             exit_code(EnvelopeCode::Io),
         ),
-        Ok(errors) if errors.is_empty() => emit(json, success_envelope(), 0),
-        Ok(errors) => {
-            let envelope = findings_envelope(errors, Vec::new());
+        Ok(report) if report.findings.is_empty() => emit(json, success_envelope(), 0),
+        Ok(report) => {
+            let envelope = findings_envelope(report.findings, Vec::new(), report.details);
             emit(json, envelope, exit_code(EnvelopeCode::CheckFailed))
         }
     }
