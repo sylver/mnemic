@@ -27,6 +27,7 @@ const SANCTIONED: &[&str] = &[
 const CLOSED: &[(&str, &str, &str, u32)] = &[
     // Note bytes after regular_file_inside.
     ("crates/mnemic-core/src/check.rs", "check_path", "read", 1),
+    ("crates/mnemic-core/src/fix.rs", "fix_locked", "read", 1),
     // Vault root and mnemic.toml. Not a note walk.
     ("crates/mnemic-core/src/index.rs", "load", "canonicalize", 1),
     ("crates/mnemic-core/src/index.rs", "read_hash", "read", 1),
