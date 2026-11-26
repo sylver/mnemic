@@ -64,10 +64,13 @@ pub fn open_config(
         }
         None => discover(start)?,
     };
-    let text = fs::read_to_string(root.join("mnemic.toml"))
-        .map_err(|err| VaultError::Io(err.to_string()))?;
+    let text = read_config_text(&root)?;
     let config = parse_vault_config(&text)?;
     Ok((root, config))
+}
+
+fn read_config_text(root: &Path) -> Result<String, VaultError> {
+    fs::read_to_string(root.join("mnemic.toml")).map_err(|err| VaultError::Io(err.to_string()))
 }
 
 fn discover(start: &Path) -> Result<PathBuf, VaultError> {
@@ -95,8 +98,7 @@ fn discover(start: &Path) -> Result<PathBuf, VaultError> {
 }
 
 pub fn load_vault(root: &Path) -> Result<Vault, VaultError> {
-    let path = root.join("mnemic.toml");
-    let text = fs::read_to_string(&path).map_err(|err| VaultError::Io(err.to_string()))?;
+    let text = read_config_text(root)?;
     let config = parse_vault_config(&text)?;
     let actor = config
         .actor

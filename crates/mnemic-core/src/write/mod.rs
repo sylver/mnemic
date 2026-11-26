@@ -10,6 +10,7 @@ mod lock;
 use std::path::Path;
 use std::time::Duration;
 
+pub use atomic::random_u64;
 use atomic::stage_temp;
 pub use lock::DEFAULT_LOCK_TIMEOUT;
 

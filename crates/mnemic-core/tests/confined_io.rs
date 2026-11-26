@@ -94,13 +94,28 @@ const CLOSED: &[(&str, &str, &str, u32)] = &[
         "canonicalize",
         1,
     ),
+    // Vault root and mnemic.toml. Not a note walk. Shared by open_config and load_vault.
     (
         "crates/mnemic-core/src/vault.rs",
-        "load_vault",
+        "read_config_text",
         "read_to_string",
         1,
     ),
     // Write-primitive helpers called by atomic_write / with_write_lock.
+    // O_EXCL create of a new note.
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "create_exclusive",
+        "OpenOptions::open",
+        1,
+    ),
+    // fsync the parent directory after the exclusive create.
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "create_exclusive",
+        "File::open",
+        1,
+    ),
     (
         "crates/mnemic-core/src/write/atomic.rs",
         "commit_temp",

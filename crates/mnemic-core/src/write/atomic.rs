@@ -146,7 +146,7 @@ fn remove_leftover_temps(dir: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn random_u64() -> Result<u64, Error> {
+pub fn random_u64() -> Result<u64, Error> {
     let mut bytes = [0u8; 8];
     let mut urandom = File::open("/dev/urandom")?;
     std::io::Read::read_exact(&mut urandom, &mut bytes)?;

@@ -222,14 +222,7 @@ fn fatal_from_new(err: NewError) -> (EnvelopeCode, String) {
 }
 
 fn random_seed() -> u64 {
-    use std::io::Read;
-    let mut bytes = [0u8; 8];
-    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
-        if file.read_exact(&mut bytes).is_ok() {
-            return u64::from_ne_bytes(bytes);
-        }
-    }
-    u64::from(std::process::id())
+    mnemic_core::write::random_u64().unwrap_or_else(|_| u64::from(std::process::id()))
 }
 
 fn log(note: String, text: String, json: bool, vault: Option<PathBuf>) -> ExitCode {
