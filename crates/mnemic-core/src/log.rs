@@ -377,14 +377,13 @@ fn insert_line(
         }
         if let Some(rest) = trimmed.strip_prefix("- ") {
             if let Ok(existing) = parse_timeline_text(rest) {
-                if existing.day() > line.day() {
-                    idx += 1;
-                    continue;
+                if existing.day() <= line.day() {
+                    at = idx;
+                    break;
                 }
             }
         }
-        at = idx;
-        break;
+        idx += 1;
     }
     lines.insert(at, rendered.to_string());
     let _ = section_end;

@@ -69,6 +69,9 @@ impl VaultIndex {
         files.sort();
         let mut notes = Vec::new();
         for file in files {
+            if !crate::check::regular_file_inside(&root, &file) {
+                continue;
+            }
             let text = fs::read(&file).map_err(|err| CheckFatal::Io(err.to_string()))?;
             let Ok(source) = String::from_utf8(text) else {
                 continue;

@@ -33,6 +33,8 @@ A note is a UTF-8 file whose name ends in `.md`, with these exceptions:
 - Any path component, including the file name, starts with `.`. That covers `.mnemic/` and atomic-write temps such as `.welcome.mnemic-tmp-1`.
 - The path is under `sources/raw/`. Those files are immutable raw sources. Tools read them and do not rewrite them.
 
+The note-file set is that walk. Each entry is `symlink_metadata` before `canonicalize_within`, and that check runs before `read_dir` or a file read. A directory symlink is not followed. A file symlink is in the set only when its canonical path is a regular file inside the vault. A FIFO, socket, device, or path `canonicalize_within` rejects is not a note. `check` does not report it, and the path is not opened.
+
 Notes live under a folder named by the type pack. `check` does not compare the folder name to `type`.
 
 ## Frontmatter

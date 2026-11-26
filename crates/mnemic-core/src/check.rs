@@ -65,6 +65,9 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<CheckReport, CheckFatal>
     let mut findings = Vec::new();
     for file in files {
         let rel = rel_path(&root, &file);
+        if !regular_file_inside(&root, &file) {
+            continue;
+        }
         let text = fs::read(&file).map_err(|err| CheckFatal::Io(err.to_string()))?;
         let source = match String::from_utf8(text) {
             Ok(source) => source,
@@ -377,7 +380,18 @@ pub(crate) fn collect_notes(
     dir: &Path,
     out: &mut Vec<PathBuf>,
 ) -> Result<(), CheckFatal> {
-    let entries = fs::read_dir(dir).map_err(|err| CheckFatal::Io(err.to_string()))?;
+    let listed = match fs::symlink_metadata(dir) {
+        Ok(meta) if meta.file_type().is_symlink() => return Ok(()),
+        Ok(_) => match crate::vault::canonicalize_within(vault_root, dir) {
+            Ok((_, confined)) => confined,
+            Err(crate::vault::ConfineError::Outside(_)) => return Ok(()),
+            Err(crate::vault::ConfineError::Io(message)) => {
+                return Err(CheckFatal::Io(message));
+            }
+        },
+        Err(err) => return Err(CheckFatal::Io(err.to_string())),
+    };
+    let entries = fs::read_dir(&listed).map_err(|err| CheckFatal::Io(err.to_string()))?;
     for entry in entries {
         let entry = entry.map_err(|err| CheckFatal::Io(err.to_string()))?;
         let name = entry.file_name();
@@ -388,13 +402,40 @@ pub(crate) fn collect_notes(
             continue;
         }
         let path = entry.path();
-        if path.is_dir() {
+        let meta = fs::symlink_metadata(&path).map_err(|err| CheckFatal::Io(err.to_string()))?;
+        let file_type = meta.file_type();
+        if file_type.is_symlink() {
+            let Ok((_, canon)) = crate::vault::canonicalize_within(vault_root, &path) else {
+                continue;
+            };
+            let Ok(canon_meta) = fs::symlink_metadata(&canon) else {
+                continue;
+            };
+            if canon_meta.file_type().is_file() && is_note(vault_root, &path) {
+                out.push(path);
+            }
+            continue;
+        }
+        if file_type.is_dir() {
             collect_notes(vault_root, &path, out)?;
-        } else if is_note(vault_root, &path) {
+        } else if file_type.is_file()
+            && is_note(vault_root, &path)
+            && regular_file_inside(vault_root, &path)
+        {
             out.push(path);
         }
     }
     Ok(())
+}
+
+/// Canonical regular file inside the vault, or nothing. Does not open the file.
+pub(crate) fn regular_file_inside(vault_root: &Path, path: &Path) -> bool {
+    let Ok((_, canon)) = crate::vault::canonicalize_within(vault_root, path) else {
+        return false;
+    };
+    fs::symlink_metadata(&canon)
+        .map(|meta| meta.file_type().is_file())
+        .unwrap_or(false)
 }
 
 pub(crate) fn rel_path(root: &Path, path: &Path) -> String {
