@@ -26,9 +26,7 @@ pub use contract::{
 };
 pub use edit::{EditError, FrontmatterEdit};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
-pub use index::{
-    index_vault, IndexedNote, LinkEdge, LinkSets, ResolveError, Resolved, VaultIndex,
-};
+pub use index::{index_vault, IndexedNote, LinkEdge, LinkSets, ResolveError, Resolved, VaultIndex};
 pub use init::{init_vault, InitData, InitError, InitReport, InitRequest, InitSuccess};
 pub use log::{log_note, LogData, LogError, LogRequest, LogResult, LogSuccess};
 pub use pack::{
