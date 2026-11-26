@@ -74,6 +74,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      # rust-toolchain.toml selects 1.100.0. The action above installs extra
+      # targets on stable, so add the target to the toolchain Cargo actually uses.
+      - name: Add the target to the pinned toolchain
+        run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -135,6 +139,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      # rust-toolchain.toml selects 1.100.0. The action above installs extra
+      # targets on stable, so add the target to the toolchain Cargo actually uses.
+      - name: Add the target to the pinned toolchain
+        run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
