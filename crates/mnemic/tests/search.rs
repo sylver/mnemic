@@ -169,29 +169,91 @@ fn deleting_the_note_removes_it_from_the_next_search() {
     assert!(json(&gone)["data"]["hits"].as_array().unwrap().is_empty());
 }
 
+#[cfg(unix)]
 #[test]
-fn symlink_outside_the_vault_is_usage() {
+fn a_note_symlink_to_an_outside_fifo_is_not_a_hit() {
     let dir = tempfile::tempdir().unwrap();
+    copy_dir(&vault(), dir.path());
     let outside = tempfile::tempdir().unwrap();
-    fs::write(
-        dir.path().join("mnemic.toml"),
-        "schema_version = 1\nactor = \"sylver\"\n",
+    mkfifo(&outside.path().join("pipe"));
+    fs::write(outside.path().join("secret.md"), outside_note()).unwrap();
+    std::os::unix::fs::symlink(
+        outside.path().join("pipe"),
+        dir.path().join("notes/escape.md"),
     )
     .unwrap();
-    let secret = outside.path().join("secret.md");
-    fs::write(
-        &secret,
-        "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FB6\ntype: note\nschema_version: 1\ntitle: Secret\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\ncreated_by: sylver\nstatus: active\n---\n\nvault-escape-phrase\n",
-    )
-    .unwrap();
-    fs::create_dir(dir.path().join("notes")).unwrap();
-    std::os::unix::fs::symlink(&secret, dir.path().join("notes/linked.md")).unwrap();
-    let output = run(dir.path(), &["search", "vault-escape-phrase", "--json"]);
-    assert_eq!(output.status.code(), Some(2));
-    let value = json(&output);
-    assert_eq!(value["error"]["code"], "USAGE");
+    assert_search_ignores_escape(dir.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_in_the_vault_is_not_a_hit() {
+    let dir = tempfile::tempdir().unwrap();
+    copy_dir(&vault(), dir.path());
+    mkfifo(&dir.path().join("notes/fifo.md"));
+    assert_search_ignores_escape(dir.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn an_outside_directory_holding_a_fifo_and_a_note_is_not_a_hit() {
+    let dir = tempfile::tempdir().unwrap();
+    copy_dir(&vault(), dir.path());
+    let outside = tempfile::tempdir().unwrap();
+    mkfifo(&outside.path().join("pipe"));
+    fs::write(outside.path().join("secret.md"), outside_note()).unwrap();
+    std::os::unix::fs::symlink(outside.path(), dir.path().join("notes/escaped")).unwrap();
+    assert_search_ignores_escape(dir.path());
+}
+
+#[cfg(unix)]
+fn outside_note() -> &'static str {
+    "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FB6\ntype: note\nschema_version: 1\ntitle: Secret\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\ncreated_by: sylver\nstatus: active\n---\n\nvault-escape-phrase phosphor-lantern\n"
+}
+
+#[cfg(unix)]
+fn mkfifo(path: &Path) {
+    let status = std::process::Command::new("mkfifo")
+        .arg(path)
+        .status()
+        .expect("mkfifo");
+    assert!(status.success(), "mkfifo {path:?}");
+}
+
+#[cfg(unix)]
+fn assert_search_ignores_escape(vault: &Path) {
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let bin = assert_cmd::cargo::cargo_bin("mnemic");
+    let mut child = Command::new(bin);
+    child
+        .current_dir(vault)
+        .args(["search", "phosphor-lantern", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = child.spawn().expect("spawn search");
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    let output = match rx.recv_timeout(Duration::from_secs(2)) {
+        Ok(output) => output.expect("wait"),
+        Err(_) => {
+            let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+            panic!("search hung");
+        }
+    };
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(!text.contains("vault-escape-phrase"));
+    assert_eq!(output.status.code(), Some(0), "{text}");
+    assert!(!text.contains("vault-escape-phrase"), "{text}");
+    let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+    assert!(
+        ids(&value).contains(&"01ARZ3NDEKTSV4RRFFQ69G5FB1".to_string()),
+        "{text}"
+    );
 }
 
 fn copy_dir(from: &Path, to: &Path) {

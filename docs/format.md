@@ -150,4 +150,4 @@ The scanned text is `title`, `aliases`, and the body, including a `## Timeline` 
 
 Hits with a token in the title come first, then hits with more token occurrences, then a later `updated`, then `id`. `score` is that position starting at 1. The default limit is 20. `section` is `truth` before `## Timeline` and `timeline` from that heading on. `snippet` is the first matching title, alias, or line, at most 200 characters.
 
-Deleting a note removes it from the next search. Root `AGENTS.md` and `README.md` are not notes, so a phrase that exists only there is not a hit. A note path that canonicalizes outside the vault is `USAGE` and is not read. The command does not take `--visibility`.
+Deleting a note removes it from the next search. Root `AGENTS.md` and `README.md` are not notes, so a phrase that exists only there is not a hit. An entry that is not a regular file inside the vault is not a note, so it is not a hit and search does not error. The command does not take `--visibility`.

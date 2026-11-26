@@ -71,7 +71,7 @@ Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noo
 
 Ranking puts a title match ahead of a body or alias match, then a higher token count, then a later `updated`, then `id` ascending. `score` is that order starting at 1. `section` is `truth` or `timeline`. Timeline is the body from a line `## Timeline` onward. `snippet` is the first matching title, alias, or line, cut at 200 characters.
 
-A note path that canonicalizes outside the vault is `USAGE`. The command does not read it. `search` also returns `VAULT_NOT_FOUND` and `IO`. It does not return an FTS syntax error.
+An entry that is not a regular file inside the vault is not a note, so it is not a hit and search does not error. `search` also returns `VAULT_NOT_FOUND` and `IO`. It does not return an FTS syntax error.
 
 `--json` success:
 
