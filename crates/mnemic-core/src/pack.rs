@@ -479,6 +479,45 @@ mod tests {
     }
 
     #[test]
+    fn template_body_rejects_a_name_that_leaves_the_vault() {
+        let root = std::env::temp_dir().join(format!(
+            "mnemic-template-escape-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let vault = root.join("a/vault");
+        fs::create_dir_all(vault.join("types")).expect("vault");
+        fs::write(root.join("x.md"), "SECRET_TEMPLATE_ESCAPE\n").expect("outside");
+        let err = template_body(&vault, "../../../x").expect_err("escape");
+        let message = err.to_string();
+        assert!(message.contains("types/../../../x.md"), "{message}");
+        assert!(!message.contains("SECRET_TEMPLATE_ESCAPE"), "{message}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn template_body_rejects_a_symlinked_markdown_file() {
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!(
+            "mnemic-template-link-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let vault = root.join("vault");
+        fs::create_dir_all(vault.join("types")).expect("vault");
+        let outside = root.join("person.md");
+        fs::write(&outside, "SECRET_TEMPLATE_LINK\n").expect("outside");
+        symlink(&outside, vault.join("types/person.md")).expect("symlink");
+        let err = template_body(&vault, "person").expect_err("symlink");
+        let message = err.to_string();
+        assert!(message.contains("types/person.md"), "{message}");
+        assert!(!message.contains("SECRET_TEMPLATE_LINK"), "{message}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn folder_must_be_string_or_list() {
         let text = "schema_version = 1\nfolder = 1\ntimeline = false\n[state]\nvalues = [\"a\"]\nfield = []\n";
         let err = load_pack([("note", text)]).expect_err("folder");
