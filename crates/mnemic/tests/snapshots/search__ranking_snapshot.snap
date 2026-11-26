@@ -1,0 +1,49 @@
+---
+source: crates/mnemic/tests/search.rs
+expression: "String::from_utf8(output.stdout).unwrap()"
+---
+{
+  "ok": true,
+  "data": {
+    "query": "alpha beta",
+    "hits": [
+      {
+        "id": "01ARZ3NDEKTSV4RRFFQ69G5FB2",
+        "path": "notes/newer.md",
+        "title": "alpha beta log",
+        "type": "note",
+        "snippet": "alpha beta log",
+        "section": "truth",
+        "score": 1
+      },
+      {
+        "id": "01ARZ3NDEKTSV4RRFFQ69G5FB4",
+        "path": "notes/older-title.md",
+        "title": "alpha beta",
+        "type": "note",
+        "snippet": "alpha beta",
+        "section": "truth",
+        "score": 2
+      },
+      {
+        "id": "01ARZ3NDEKTSV4RRFFQ69G5FB3",
+        "path": "notes/hits.md",
+        "title": "Other",
+        "type": "note",
+        "snippet": "alpha beta alpha beta alpha",
+        "section": "timeline",
+        "score": 3
+      },
+      {
+        "id": "01ARZ3NDEKTSV4RRFFQ69G5FB1",
+        "path": "people/ada.md",
+        "title": "Ada",
+        "type": "person",
+        "snippet": "alpha beta sits in the truth.",
+        "section": "truth",
+        "score": 4
+      }
+    ]
+  },
+  "error": null
+}

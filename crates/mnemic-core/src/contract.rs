@@ -240,7 +240,27 @@ fn render_markdown() -> String {
          ## `mnemic log`\n\n\
          `mnemic log <note> <text> --json` prints one JSON document. `<note>` is a path, id, slug, or alias, resolved inside the write lock.\n\n\
          Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noop`, `line`, and `heading_created`. `line` is the timeline item, including the `- ` marker. `noop` is true when that exact line is already on the page. `heading_created` is true when this call added `## Timeline`.\n\n\
-         `NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` means the resolved path canonicalizes outside the vault, including an outside symlink. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.\n",
+         `NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` means the resolved path canonicalizes outside the vault, including an outside symlink. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.\n\n\
+         ## Search\n\n\
+         `mnemic search <query> [--type <type>] [--tag <tag>] [--since <date>] [--limit <n>] [--json]` \
+         scans the parsed note-file set. There is no index command and no query language. \
+         Tokens are whitespace-separated. Matching is case-insensitive Unicode lowercase with no \
+         diacritic folding. Every token must occur in the title, an alias, or the body. \
+         `-`, `\"`, and `:` are literal characters.\n\n\
+         `--type` is an exact type name. `--tag` matches a `tags` entry that equals the value \
+         or starts with `<value>/`. `--since` keeps notes whose `updated` is that ISO date or \
+         datetime, inclusive. A date is midnight UTC. The default `--limit` is 20. \
+         `--limit` of zero or less and an empty query are `USAGE`, exit 2. \
+         Zero hits is `ok: true`, `hits: []`, exit 0.\n\n\
+         Ranking puts a title match ahead of a body or alias match, then a higher token count, \
+         then a later `updated`, then `id` ascending. `score` is that order starting at 1. \
+         `section` is `truth` or `timeline`. Timeline is the body from a line `## Timeline` onward. \
+         `snippet` is the first matching title, alias, or line, cut at 200 characters.\n\n\
+         An entry that is not a regular file inside the vault is not a note, so it is not a hit and search does not error. \
+         `search` also returns `VAULT_NOT_FOUND` and `IO`. It does not return an FTS syntax error.\n\n\
+         `--json` success:\n\n\
+         `ok`, `data.query`, `data.hits[]` with `id`, `path`, `title`, `type`, `snippet`, \
+         `section`, `score`, and `error: null`.\n",
     );
     out
 }

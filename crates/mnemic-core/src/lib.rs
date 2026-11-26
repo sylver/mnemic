@@ -11,6 +11,7 @@ mod index;
 mod init;
 mod log;
 mod pack;
+mod search;
 mod ulid;
 mod vault;
 pub mod write;
@@ -23,12 +24,15 @@ pub use contract::{
 };
 pub use edit::{EditError, FrontmatterEdit};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
-pub use index::{index_vault, ResolveError, Resolved, VaultIndex};
+pub use index::{index_vault, IndexedNote, ResolveError, Resolved, VaultIndex};
 pub use init::{init_vault, InitData, InitError, InitReport, InitRequest, InitSuccess};
 pub use log::{log_note, LogData, LogError, LogRequest, LogResult, LogSuccess};
 pub use pack::{
     core_pack, core_template, load_overlay_dir, load_pack, resolve_pack, template_body, FieldDef,
     FieldKind, Pack, PackError, TypeDef,
+};
+pub use search::{
+    search_vault, SearchData, SearchEnvelope, SearchError, SearchHit, SearchRequest, SearchSection,
 };
 pub use ulid::{is_ulid, UlidGenerator};
 pub use vault::{

@@ -3,9 +3,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use mnemic_core::{
-    exit_code, fatal_envelope, findings_envelope, init_vault, log_note, success_envelope, to_json,
-    CheckEnvelope, CheckFatal, EnvelopeCode, InitData, InitError, InitRequest, InitSuccess,
-    LogError, LogRequest, SystemClock, VaultError,
+    exit_code, fatal_envelope, findings_envelope, init_vault, log_note, search_vault,
+    success_envelope, to_json, CheckEnvelope, CheckFatal, EnvelopeCode, InitData, InitError,
+    InitRequest, InitSuccess, LogError, LogRequest, SearchData, SearchEnvelope, SearchError,
+    SearchRequest, SystemClock, VaultError,
 };
 
 #[derive(Parser)]
@@ -53,6 +54,29 @@ enum Command {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Search parsed notes. Tokens are literal and combined with AND.
+    Search {
+        /// Whitespace-separated tokens. Every token must match.
+        query: Option<String>,
+        /// Exact type name.
+        #[arg(long = "type")]
+        type_name: Option<String>,
+        /// Tag, or a prefix path such as `work` for `work/x`.
+        #[arg(long)]
+        tag: Option<String>,
+        /// Inclusive lower bound on `updated` (ISO date or datetime).
+        #[arg(long)]
+        since: Option<String>,
+        /// Maximum hits. Default 20. Zero or less is a usage error.
+        #[arg(long)]
+        limit: Option<i64>,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -66,6 +90,15 @@ fn main() -> ExitCode {
             json,
             vault,
         } => log(note, text, json, vault),
+        Command::Search {
+            query,
+            type_name,
+            tag,
+            since,
+            limit,
+            json,
+            vault,
+        } => search(query, type_name, tag, since, limit, json, vault),
     }
 }
 
@@ -136,6 +169,87 @@ fn fatal_from_vault_message(message: &str) -> (EnvelopeCode, String) {
     } else {
         (EnvelopeCode::BadConfig, message.to_string())
     }
+}
+
+fn search(
+    query: Option<String>,
+    type_name: Option<String>,
+    tag: Option<String>,
+    since: Option<String>,
+    limit: Option<i64>,
+    json: bool,
+    vault: Option<PathBuf>,
+) -> ExitCode {
+    let Some(query) = query.filter(|text| !text.trim().is_empty()) else {
+        return emit(
+            json,
+            fatal_envelope(EnvelopeCode::Usage, "query is empty"),
+            exit_code(EnvelopeCode::Usage),
+        );
+    };
+    let limit = match limit {
+        None => 20,
+        Some(value) if value > 0 => value as usize,
+        Some(_) => {
+            return emit(
+                json,
+                fatal_envelope(EnvelopeCode::Usage, "limit must be greater than zero"),
+                exit_code(EnvelopeCode::Usage),
+            );
+        }
+    };
+    let start = vault.clone().unwrap_or_else(|| PathBuf::from("."));
+    let vault = match mnemic_core::open_vault(&start, vault.as_deref()) {
+        Ok(vault) => vault,
+        Err(err) => {
+            let (code, message) = fatal_from_vault(err);
+            return emit(json, fatal_envelope(code, message), exit_code(code));
+        }
+    };
+    match search_vault(
+        &vault.root,
+        SearchRequest {
+            query: &query,
+            type_name: type_name.as_deref(),
+            tag: tag.as_deref(),
+            since: since.as_deref(),
+            limit,
+        },
+    ) {
+        Ok(data) => emit_search(json, data),
+        Err(SearchError::Usage(message)) => emit(
+            json,
+            fatal_envelope(EnvelopeCode::Usage, message),
+            exit_code(EnvelopeCode::Usage),
+        ),
+        Err(SearchError::Io(message)) => emit(
+            json,
+            fatal_envelope(EnvelopeCode::Io, message),
+            exit_code(EnvelopeCode::Io),
+        ),
+    }
+}
+
+fn emit_search(json: bool, data: SearchData) -> ExitCode {
+    if json {
+        let envelope = SearchEnvelope {
+            ok: true,
+            data: Some(data),
+            error: None,
+        };
+        match serde_json::to_string_pretty(&envelope) {
+            Ok(text) => println!("{text}"),
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::from(1);
+            }
+        }
+    } else {
+        for hit in &data.hits {
+            println!("{}\t{}\t{}", hit.score, hit.id, hit.path);
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 fn init(json: bool, vault: Option<PathBuf>, actor: Option<String>) -> ExitCode {

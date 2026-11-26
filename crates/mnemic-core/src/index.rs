@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::thread;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -35,11 +36,29 @@ struct NoteRec {
     aliases: Vec<String>,
     status: String,
     type_name: String,
+    title: String,
+    tags: Vec<String>,
+    updated: String,
+    body: String,
     supersedes: Vec<String>,
     wikilinks: Vec<(bool, String)>,
     typed: Vec<(String, String)>,
     source_path: Option<String>,
     sha256: Option<String>,
+}
+
+/// One parsed note from [`VaultIndex`]. Search reads these fields.
+/// It does not walk the vault again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndexedNote<'a> {
+    pub id: &'a str,
+    pub path: &'a str,
+    pub type_name: &'a str,
+    pub title: &'a str,
+    pub aliases: &'a [String],
+    pub tags: &'a [String],
+    pub updated: &'a str,
+    pub body: &'a str,
 }
 
 /// A resolved wikilink or typed frontmatter link.
@@ -67,23 +86,26 @@ impl VaultIndex {
         let mut files = Vec::new();
         collect_notes(&root, &root, &mut files)?;
         files.sort();
-        let mut notes = Vec::new();
-        for file in files {
-            if !crate::check::regular_file_inside(&root, &file) {
-                continue;
-            }
-            let text = fs::read(&file).map_err(|err| CheckFatal::Io(err.to_string()))?;
-            let Ok(source) = String::from_utf8(text) else {
-                continue;
-            };
-            let Ok(parsed) = frontmatter::parse_note(&source) else {
-                continue;
-            };
-            if let Some(note) = note_rec(&root, &file, &parsed) {
-                notes.push(note);
-            }
-        }
+        let notes = read_notes(&root, &files)?;
         Ok(Self::from_notes(root, notes))
+    }
+
+    /// Parsed notes in vault-relative path order.
+    pub fn notes(&self) -> impl Iterator<Item = IndexedNote<'_>> {
+        self.notes.iter().map(|note| IndexedNote {
+            id: &note.id,
+            path: &note.path,
+            type_name: &note.type_name,
+            title: &note.title,
+            aliases: &note.aliases,
+            tags: &note.tags,
+            updated: &note.updated,
+            body: &note.body,
+        })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     fn from_notes(root: PathBuf, notes: Vec<NoteRec>) -> Self {
@@ -411,6 +433,55 @@ impl VaultIndex {
     }
 }
 
+fn read_notes(root: &Path, files: &[PathBuf]) -> Result<Vec<NoteRec>, CheckFatal> {
+    let workers = thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1)
+        .clamp(1, 8);
+    if files.len() < 64 || workers == 1 {
+        return files.iter().try_fold(Vec::new(), |mut notes, file| {
+            if let Some(note) = read_note(root, file)? {
+                notes.push(note);
+            }
+            Ok(notes)
+        });
+    }
+    let chunk = files.len().div_ceil(workers);
+    thread::scope(|scope| {
+        let mut joins = Vec::new();
+        for group in files.chunks(chunk) {
+            joins.push(scope.spawn(move || {
+                let mut notes = Vec::with_capacity(group.len());
+                for file in group {
+                    if let Some(note) = read_note(root, file)? {
+                        notes.push(note);
+                    }
+                }
+                Ok(notes)
+            }));
+        }
+        let mut notes = Vec::with_capacity(files.len());
+        for join in joins {
+            let group = join
+                .join()
+                .map_err(|_| CheckFatal::Io("index worker panicked".to_string()))??;
+            notes.extend(group);
+        }
+        Ok(notes)
+    })
+}
+
+fn read_note(root: &Path, file: &Path) -> Result<Option<NoteRec>, CheckFatal> {
+    let text = fs::read(file).map_err(|err| CheckFatal::Io(err.to_string()))?;
+    let Ok(source) = String::from_utf8(text) else {
+        return Ok(None);
+    };
+    let Ok(parsed) = frontmatter::parse_note(&source) else {
+        return Ok(None);
+    };
+    Ok(note_rec(root, file, &parsed))
+}
+
 fn note_rec(root: &Path, file: &Path, parsed: &ParsedNote) -> Option<NoteRec> {
     let id = parsed.values.get("id").and_then(Value::as_str)?;
     if id.is_empty() {
@@ -443,12 +514,28 @@ fn note_rec(root: &Path, file: &Path, parsed: &ParsedNote) -> Option<NoteRec> {
         .get("sha256")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let title = parsed
+        .values
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let updated = parsed
+        .values
+        .get("updated")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     Some(NoteRec {
         id: id.to_string(),
         path: rel_path(root, file),
         aliases: string_list(parsed.values.get("aliases")),
         status,
         type_name,
+        title,
+        tags: string_list(parsed.values.get("tags")),
+        updated,
+        body: parsed.body.clone(),
         supersedes: string_list(parsed.values.get("supersedes")),
         wikilinks: wikilink_targets(&parsed.body),
         typed: typed_pairs(parsed),

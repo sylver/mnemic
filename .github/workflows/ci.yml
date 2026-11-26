@@ -22,3 +22,4 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --locked
+      - run: cargo test --locked -p mnemic-core --lib five_thousand_notes_median -- --nocapture
