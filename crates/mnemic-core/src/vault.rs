@@ -33,6 +33,22 @@ pub enum VaultError {
 }
 
 pub fn open_vault(start: &Path, explicit: Option<&Path>) -> Result<Vault, VaultError> {
+    let (root, config) = open_config(start, explicit)?;
+    let actor = config
+        .actor
+        .ok_or_else(|| VaultError::BadConfig("missing actor".to_string()))?;
+    Ok(Vault {
+        root,
+        schema_version: config.schema_version,
+        actor,
+    })
+}
+
+/// Vault root and parsed `mnemic.toml`. `actor` may be absent.
+pub fn open_config(
+    start: &Path,
+    explicit: Option<&Path>,
+) -> Result<(PathBuf, VaultConfig), VaultError> {
     let root = match explicit {
         Some(path) => {
             if !path.is_dir() {
@@ -48,7 +64,13 @@ pub fn open_vault(start: &Path, explicit: Option<&Path>) -> Result<Vault, VaultE
         }
         None => discover(start)?,
     };
-    load_vault(&root)
+    let text = read_config_text(&root)?;
+    let config = parse_vault_config(&text)?;
+    Ok((root, config))
+}
+
+fn read_config_text(root: &Path) -> Result<String, VaultError> {
+    fs::read_to_string(root.join("mnemic.toml")).map_err(|err| VaultError::Io(err.to_string()))
 }
 
 fn discover(start: &Path) -> Result<PathBuf, VaultError> {
@@ -76,8 +98,7 @@ fn discover(start: &Path) -> Result<PathBuf, VaultError> {
 }
 
 pub fn load_vault(root: &Path) -> Result<Vault, VaultError> {
-    let path = root.join("mnemic.toml");
-    let text = fs::read_to_string(&path).map_err(|err| VaultError::Io(err.to_string()))?;
+    let text = read_config_text(root)?;
     let config = parse_vault_config(&text)?;
     let actor = config
         .actor

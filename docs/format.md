@@ -132,6 +132,16 @@ Each core type has one body template compiled into the CLI, next to its TOML. Th
 
 A file `<vault>/types/<type>.md` replaces the embedded body for that type. A type with neither file is a missing template. That is `MISSING_TEMPLATE` when `new` writes the type. `check` does not report it.
 
+## `mnemic new`
+
+`mnemic new <type> <title>` creates one note. The filename slug is `deunicode` transliteration, then lowercase ASCII, with spaces and punctuation turned into `-`, repeated dashes collapsed, and dashes trimmed. A title that slugs to empty is `USAGE`.
+
+The file lands in the type's pack folder. A `note` is unfiled, so it lands in `inbox/`. A filed catch-all `note` lives in `notes/`. A `journal` note lands at `journal/YYYY/YYYY-MM-DD.md`. A second journal on that same day lands at `journal/YYYY/YYYY-MM-DD-slug.md`. With no `--date`, `date` is the process local calendar day as `YYYY-MM-DD`, with no time and no offset. `--date` stores that ISO date the same way.
+
+`id` is a Crockford ULID from the seedable generator, or `--id` when that flag is itself a Crockford ULID. Anything else is `BAD_ID`. `created` and `updated` are the same RFC 3339 timestamp from the clock. `created_by` is `--as` or `actor` in `mnemic.toml`. With neither, `new` is `USAGE` and the message names both `--as` and `actor`. `status` is `active`. `new` does not write `visibility`.
+
+The same `--id` at the same path is a success no-op and does not rewrite the file. The same `--id` at a different path is `ID_EXISTS`. The new filename slug must not equal any other note's slug or alias, compared case-insensitively after NFC. That is `SLUG_COLLISION`, including a slug in another folder. Notes that already share a slug stay. `new` does not add another. The create is `O_EXCL` under the vault write lock. A destination that canonicalizes outside the vault is `OUTSIDE_VAULT` and is not written. `sources/raw/` is not a create destination.
+
 ## Vault overlays
 
 `<vault>/types/*.toml` is the only overlay. The file stem is the type name, and that name is one path component. `check` loads that directory from the vault root at the start of a run. Files there are pack files. `check` does not treat them as notes. A symlink at `types/` or at a pack or template file, and a path that canonicalizes outside the vault, is `INVALID_PACK`. The finding names the vault-relative path and does not include the other file's text.

@@ -10,6 +10,7 @@ mod lock;
 use std::path::Path;
 use std::time::Duration;
 
+pub use atomic::random_u64;
 use atomic::stage_temp;
 pub use lock::DEFAULT_LOCK_TIMEOUT;
 
@@ -29,6 +30,11 @@ impl WriteTxn {
     pub fn atomic_write(&self, path: &Path, bytes: &[u8]) -> Result<(), Error> {
         let staged = stage_temp(path, bytes)?;
         atomic::commit_temp(path, &staged)
+    }
+
+    /// Create `path` with `O_EXCL` and write `bytes`. An existing path is left unchanged.
+    pub fn create_exclusive(&self, path: &Path, bytes: &[u8]) -> Result<(), Error> {
+        atomic::create_exclusive(path, bytes)
     }
 
     /// Write and `fsync` the temp file, then exit the process before rename.

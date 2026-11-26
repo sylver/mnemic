@@ -69,7 +69,12 @@
         "AMBIGUOUS",
         "TIMELINE_DISABLED",
         "TIMELINE_HEADING_AMBIGUOUS",
-        "OUTSIDE_VAULT"
+        "OUTSIDE_VAULT",
+        "UNKNOWN_TYPE",
+        "BAD_ID",
+        "ID_EXISTS",
+        "SLUG_COLLISION",
+        "MISSING_TEMPLATE"
       ]
     },
     "ErrorObject": {
