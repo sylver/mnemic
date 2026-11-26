@@ -6,6 +6,7 @@
 //! `VaultIndex::resolve_argument` (`confine_user_path`), `with_write_lock`, or
 //! `WriteTxn::atomic_write`. Do not reimplement, cache, or wrap `canonicalize_within`.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 const SANCTIONED: &[&str] = &[
@@ -18,40 +19,130 @@ const SANCTIONED: &[&str] = &[
     "with_write_lock",
 ];
 
-/// Production call sites that already exist outside the sanctioned functions.
-/// `path:line` is relative to the workspace root. Adding a call means adding a
-/// line here in the same change; the failure text names the helper to use instead.
-const CLOSED: &[&str] = &[
+/// `(file, enclosing function, call, times)`.
+///
+/// `times` is 1 except where that function already makes the same call more
+/// than once. A new `(file, function, call)` fails. A listed triple with no
+/// remaining call fails. Shifting lines does not.
+const CLOSED: &[(&str, &str, &str, u32)] = &[
+    // Note bytes after regular_file_inside.
+    ("crates/mnemic-core/src/check.rs", "check_path", "read", 1),
     // Vault root and mnemic.toml. Not a note walk.
-    "crates/mnemic-core/src/index.rs:112",
-    "crates/mnemic-core/src/read.rs:64",
-    "crates/mnemic-core/src/vault.rs:80",
-    // Note and raw bytes after the walk or canonicalize_within.
-    "crates/mnemic-core/src/check.rs:71",
-    "crates/mnemic-core/src/index.rs:461",
-    "crates/mnemic-core/src/index.rs:590",
-    "crates/mnemic-core/src/log.rs:182",
-    "crates/mnemic-core/src/read.rs:114",
-    // Type overlays under <vault>/types, after canonicalize_within.
-    "crates/mnemic-core/src/pack.rs:133",
-    "crates/mnemic-core/src/pack.rs:163",
-    "crates/mnemic-core/src/pack.rs:190",
+    ("crates/mnemic-core/src/index.rs", "load", "canonicalize", 1),
+    ("crates/mnemic-core/src/index.rs", "read_hash", "read", 1),
+    ("crates/mnemic-core/src/index.rs", "read_note", "read", 1),
     // init scaffolds a directory that is not a vault yet.
-    "crates/mnemic-core/src/init.rs:154",
-    "crates/mnemic-core/src/init.rs:160",
-    "crates/mnemic-core/src/init.rs:181",
-    "crates/mnemic-core/src/init.rs:199",
-    "crates/mnemic-core/src/init.rs:278",
-    "crates/mnemic-core/src/init.rs:285",
-    "crates/mnemic-core/src/init.rs:342",
+    // prepare_target and plan_gitignore already call these twice.
+    (
+        "crates/mnemic-core/src/init.rs",
+        "classify_config",
+        "read_to_string",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/init.rs",
+        "directory_has_entries",
+        "read_dir",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/init.rs",
+        "enclosing_vault_for_missing",
+        "canonicalize",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/init.rs",
+        "plan_gitignore",
+        "read",
+        2,
+    ),
+    (
+        "crates/mnemic-core/src/init.rs",
+        "prepare_target",
+        "canonicalize",
+        2,
+    ),
+    ("crates/mnemic-core/src/log.rs", "log_locked", "read", 1),
+    (
+        "crates/mnemic-core/src/pack.rs",
+        "load_overlay_dir",
+        "read_dir",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/pack.rs",
+        "load_overlay_dir",
+        "read_to_string",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/pack.rs",
+        "template_body",
+        "read_to_string",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/read.rs",
+        "read_confined",
+        "read_to_string",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/read.rs",
+        "read_note",
+        "canonicalize",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/vault.rs",
+        "load_vault",
+        "read_to_string",
+        1,
+    ),
     // Write-primitive helpers called by atomic_write / with_write_lock.
-    "crates/mnemic-core/src/write/atomic.rs:45",
-    "crates/mnemic-core/src/write/atomic.rs:92",
-    "crates/mnemic-core/src/write/atomic.rs:114",
-    "crates/mnemic-core/src/write/atomic.rs:132",
-    "crates/mnemic-core/src/write/lock.rs:59",
-    "crates/mnemic-core/src/write/lock.rs:78",
-    "crates/mnemic-core/src/write/lock.rs:122",
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "commit_temp",
+        "File::open",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "random_u64",
+        "File::open",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "remove_leftover_temps",
+        "read_dir",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "stage_temp",
+        "OpenOptions::open",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/write/lock.rs",
+        "acquire",
+        "OpenOptions::open",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/write/lock.rs",
+        "lock_path",
+        "canonicalize",
+        1,
+    ),
+    (
+        "crates/mnemic-core/src/write/lock.rs",
+        "read_holder",
+        "read_to_string",
+        1,
+    ),
 ];
 
 #[test]
@@ -62,38 +153,32 @@ fn confined_vault_io_stays_behind_the_walk() {
         let dir = root.join(relative);
         collect_dir(&dir, &root, &mut found);
     }
-    found.sort_by(|left, right| {
-        left.site
-            .cmp(&right.site)
-            .then(left.method.cmp(&right.method))
-    });
-    found.dedup_by(|left, right| left.site == right.site && left.method == right.method);
+    let mut counts: BTreeMap<(&str, &str, &str), u32> = BTreeMap::new();
+    for hit in &found {
+        let function = hit.function.as_deref().unwrap_or("<module>");
+        if SANCTIONED.contains(&function) {
+            continue;
+        }
+        *counts
+            .entry((hit.file.as_str(), function, hit.call.as_str()))
+            .or_insert(0) += 1;
+    }
 
-    let mut missing: Vec<&str> = CLOSED
-        .iter()
-        .copied()
-        .filter(|site| !found.iter().any(|hit| hit.site == *site))
-        .collect();
-    missing.sort_unstable();
-
-    let mut fresh: Vec<String> = found
-        .iter()
-        .filter(|hit| {
-            hit.function
-                .as_deref()
-                .is_none_or(|name| !SANCTIONED.contains(&name))
-        })
-        .filter(|hit| !CLOSED.contains(&hit.site.as_str()))
-        .map(|hit| {
-            format!(
-                "{} calls {} in `{}`",
-                hit.site,
-                hit.method,
-                hit.function.as_deref().unwrap_or("<module>")
-            )
-        })
+    let mut missing = Vec::new();
+    for (file, function, call, times) in CLOSED {
+        let got = counts.remove(&(file, function, call)).unwrap_or(0);
+        if got != *times {
+            missing.push(format!(
+                "({file}, {function}, {call}) expected {times}, found {got}"
+            ));
+        }
+    }
+    let mut fresh: Vec<String> = counts
+        .into_iter()
+        .map(|((file, function, call), times)| format!("({file}, {function}, {call}) x{times}"))
         .collect();
     fresh.sort();
+    missing.sort();
 
     assert!(
         missing.is_empty() && fresh.is_empty(),
@@ -103,7 +188,7 @@ fn confined_vault_io_stays_behind_the_walk() {
          Write through with_write_lock / WriteTxn::atomic_write.\n\
          Do not reimplement, cache, or wrap canonicalize_within.\n\
          New call sites:\n{}\n\
-         Closed-set lines that no longer match:\n{}\n",
+         Closed-set entries that no longer match:\n{}\n",
         if fresh.is_empty() {
             "(none)".to_string()
         } else {
@@ -118,8 +203,8 @@ fn confined_vault_io_stays_behind_the_walk() {
 }
 
 struct Hit {
-    site: String,
-    method: String,
+    file: String,
+    call: String,
     function: Option<String>,
 }
 
@@ -159,8 +244,7 @@ fn calls_in(relative: &str, masked: &str) -> Vec<Hit> {
     let mut arm_cfg = false;
     let mut lookback = Vec::<u8>::new();
 
-    for (index, line) in masked.lines().enumerate() {
-        let line_no = index + 1;
+    for line in masked.lines() {
         if line.trim_start().starts_with("#[cfg(test)]") {
             arm_cfg = true;
         }
@@ -222,8 +306,8 @@ fn calls_in(relative: &str, masked: &str) -> Vec<Hit> {
             if skip.is_none() {
                 if let Some((method, len)) = method_at(bytes, cursor, &lookback) {
                     found.push(Hit {
-                        site: format!("{relative}:{line_no}"),
-                        method: method.to_string(),
+                        file: relative.to_string(),
+                        call: method.to_string(),
                         function: functions.last().map(|(name, _)| name.clone()),
                     });
                     push_lookback(&mut lookback, &bytes[cursor..cursor + len]);
@@ -248,28 +332,28 @@ fn push_lookback(lookback: &mut Vec<u8>, bytes: &[u8]) {
 }
 
 fn method_at(bytes: &[u8], cursor: usize, lookback: &[u8]) -> Option<(&'static str, usize)> {
-    const NEEDLES: &[&str] = &[
-        "std::fs::read_to_string",
-        "std::fs::read_dir",
-        "std::fs::canonicalize",
-        "std::fs::metadata",
-        "std::fs::read",
-        "fs::read_to_string",
-        "fs::read_dir",
-        "fs::canonicalize",
-        "fs::metadata",
-        "fs::read",
-        "std::fs::File::open",
-        "File::open",
-        "OpenOptions::open",
+    const NEEDLES: &[(&str, &str)] = &[
+        ("std::fs::read_to_string", "read_to_string"),
+        ("std::fs::read_dir", "read_dir"),
+        ("std::fs::canonicalize", "canonicalize"),
+        ("std::fs::metadata", "metadata"),
+        ("std::fs::read", "read"),
+        ("fs::read_to_string", "read_to_string"),
+        ("fs::read_dir", "read_dir"),
+        ("fs::canonicalize", "canonicalize"),
+        ("fs::metadata", "metadata"),
+        ("fs::read", "read"),
+        ("std::fs::File::open", "File::open"),
+        ("File::open", "File::open"),
+        ("OpenOptions::open", "OpenOptions::open"),
     ];
     if ident_continues(bytes, cursor) {
         return None;
     }
-    for needle in NEEDLES {
+    for (needle, call) in NEEDLES {
         let raw = needle.as_bytes();
         if bytes[cursor..].starts_with(raw) && followed_by_call(bytes, cursor + raw.len()) {
-            return Some((needle, raw.len()));
+            return Some((call, raw.len()));
         }
     }
     if bytes[cursor..].starts_with(b".open")
