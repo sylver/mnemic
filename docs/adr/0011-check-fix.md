@@ -1,4 +1,4 @@
-# ADR-0008: check --fix inserts only derived id and type
+# ADR-0011: check --fix inserts only derived id and type
 
 ## Status
 
