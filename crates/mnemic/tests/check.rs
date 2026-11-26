@@ -311,12 +311,12 @@ fn case_fold_vault_exits_zero() {
 
 #[test]
 fn unknown_check_flag_is_rejected() {
-    let output = run(&["check", "--fix"]);
+    let output = run(&["check", "--nope"]);
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).expect("utf-8");
     assert!(
         stderr.contains("unexpected")
             || stderr.contains("unrecognized")
-            || stderr.contains("--fix")
+            || stderr.contains("--nope")
     );
 }

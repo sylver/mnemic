@@ -42,10 +42,13 @@ pub fn parse_note(source: &str) -> Result<ParsedNote, FrontmatterError> {
     let (inner, block) = split_block(source)?;
     let docs = MarkedYaml::load_from_str(inner).map_err(map_yaml_error)?;
     let doc = match docs.as_slice() {
-        [] => return Err(FrontmatterError::NotAMapping),
+        [] => return Ok(empty_note(source, block)),
         [doc] => doc,
         _ => return Err(FrontmatterError::Yaml("multiple documents".to_string())),
     };
+    if matches!(&doc.data, YamlData::Value(Scalar::Null)) {
+        return Ok(empty_note(source, block));
+    }
     let YamlData::Mapping(mapping) = &doc.data else {
         return Err(FrontmatterError::NotAMapping);
     };
@@ -78,22 +81,39 @@ fn map_yaml_error(err: ScanError) -> FrontmatterError {
     }
 }
 
-fn opening_len(source: &str) -> usize {
-    if source.starts_with("---\r\n") {
-        5
-    } else {
-        4
+fn empty_note(source: &str, block: ByteSpan) -> ParsedNote {
+    let body = source[block.end..].to_string();
+    ParsedNote {
+        block,
+        keys: Vec::new(),
+        values: BTreeMap::new(),
+        body,
     }
 }
 
+fn bom_len(source: &str) -> usize {
+    if source.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        0
+    }
+}
+
+fn opening_len(source: &str) -> usize {
+    let head = &source[bom_len(source)..];
+    let fence = if head.starts_with("---\r\n") { 5 } else { 4 };
+    bom_len(source) + fence
+}
+
 fn split_block(source: &str) -> Result<(&str, ByteSpan), FrontmatterError> {
-    let Some(rest) = source
+    let head = &source[bom_len(source)..];
+    let Some(rest) = head
         .strip_prefix("---\n")
-        .or_else(|| source.strip_prefix("---\r\n"))
+        .or_else(|| head.strip_prefix("---\r\n"))
     else {
         return Err(FrontmatterError::Missing);
     };
-    let line_end = if source.starts_with("---\r\n") {
+    let line_end = if head.starts_with("---\r\n") {
         "\r\n"
     } else {
         "\n"
@@ -230,6 +250,34 @@ mod tests {
         let id = note.keys.iter().find(|key| key.name == "id").expect("id");
         assert!(source[id.span.start..id.span.end].starts_with("id"));
         assert_eq!(note.body, "\nBody\n");
+    }
+
+    #[test]
+    fn a_leading_bom_stays_outside_the_parsed_block() {
+        let source = "\u{feff}---\ntitle: Kept\n---\n\nBody\n";
+        let note = parse_note(source).expect("parse");
+        assert_eq!(source.as_bytes()[0], 0xEF);
+        assert_eq!(note.values["title"], Value::String("Kept".to_string()));
+        assert_eq!(note.body, "\nBody\n");
+        assert!(source[note.block.start..note.block.end].contains("title: Kept"));
+    }
+
+    #[test]
+    fn an_empty_or_null_document_is_an_empty_mapping() {
+        for source in [
+            "---\n---\nBody\n",
+            "---\n\n---\nBody\n",
+            "---\nnull\n---\nBody\n",
+        ] {
+            let note = parse_note(source).expect(source);
+            assert!(note.values.is_empty());
+            assert!(note.keys.is_empty());
+            assert!(note.body.ends_with("Body\n"));
+        }
+        assert_eq!(
+            parse_note("---\n- a\n---\n").unwrap_err(),
+            FrontmatterError::NotAMapping
+        );
     }
 
     #[test]

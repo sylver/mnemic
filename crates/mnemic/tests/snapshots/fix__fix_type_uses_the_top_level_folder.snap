@@ -1,0 +1,32 @@
+---
+source: crates/mnemic/tests/fix.rs
+expression: stdout
+---
+{
+  "ok": true,
+  "data": {
+    "errors": [],
+    "warnings": [],
+    "changes": [
+      {
+        "path": "notes/scratch.md",
+        "field": "type",
+        "old": null,
+        "new": "note"
+      },
+      {
+        "path": "people/ada.md",
+        "field": "type",
+        "old": null,
+        "new": "person"
+      },
+      {
+        "path": "people/friends/nested.md",
+        "field": "type",
+        "old": null,
+        "new": "person"
+      }
+    ]
+  },
+  "error": null
+}

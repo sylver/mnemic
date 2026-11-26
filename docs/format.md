@@ -37,6 +37,14 @@ The note-file set is that walk. Each entry is `symlink_metadata` before `canonic
 
 Notes live under a folder named by the type pack. `check` does not compare the folder name to `type`.
 
+## `check --fix`
+
+`mnemic check --fix` inserts only what it can derive. A missing `id` becomes a new Crockford ULID. The time component comes from the process clock, not the file mtime. A missing `type` is set from the note's top-level folder when that folder equals exactly one type's `folder`. `folder` is a string or a list of strings. `people/friends/x.md` uses `people`. `inbox/` and `notes/` both derive `note`, because the `note` type lists both. A folder that maps to no type, or to more than one, leaves `type` missing.
+
+A note with no frontmatter block gets a new `---` block that contains only those derived keys. The body bytes stay identical. An `id` that is present but not a ULID is reported and left in place. `title`, `created`, `updated`, `created_by`, `status`, `schema_version`, aliases, and the body are not invented. `updated` is not stamped.
+
+The command considers the note-file set only. Root `AGENTS.md` and `README.md` are not fixed. One lock covers the vault. A second run writes nothing when the first run's inserts are still in place. An I/O error after a rename leaves the earlier files fixed. The next run finishes the rest.
+
 ## Frontmatter
 
 A note starts with a YAML mapping between `---` fences. The mapping is the only document. Duplicate keys are rejected. The fence must close.

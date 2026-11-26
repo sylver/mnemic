@@ -5,11 +5,11 @@ use clap::{Parser, Subcommand};
 use std::collections::BTreeMap;
 
 use mnemic_core::{
-    create_note, exit_code, fatal_envelope, fatal_envelope_with, findings_envelope, init_vault,
-    log_note, read_note, search_vault, success_envelope, to_json, CheckEnvelope, CheckFatal,
-    EnvelopeCode, InitData, InitError, InitRequest, InitSuccess, LogError, LogRequest, NewError,
-    NewRequest, NoteView, ReadError, SearchData, SearchEnvelope, SearchError, SearchRequest,
-    SystemClock, UlidGenerator, VaultError,
+    check_fix, create_note, exit_code, fatal_envelope, fatal_envelope_with, findings_envelope,
+    fix_envelope, init_vault, log_note, read_note, search_vault, success_envelope, to_json,
+    CheckEnvelope, CheckFatal, EnvelopeCode, FixError, FixRequest, InitData, InitError,
+    InitRequest, InitSuccess, LogError, LogRequest, NewError, NewRequest, NoteView, ReadError,
+    SearchData, SearchEnvelope, SearchError, SearchRequest, SystemClock, UlidGenerator, VaultError,
 };
 use serde_json::{json, Value};
 
@@ -32,6 +32,9 @@ enum Command {
         /// Vault root. Defaults to the nearest parent `mnemic.toml`.
         #[arg(long)]
         vault: Option<PathBuf>,
+        /// Insert a missing id, and a missing type when the folder maps to one type.
+        #[arg(long)]
+        fix: bool,
     },
     /// Scaffold a vault in the target directory.
     Init {
@@ -129,7 +132,12 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Check { path, json, vault } => check(path, json, vault),
+        Command::Check {
+            path,
+            json,
+            vault,
+            fix,
+        } => check(path, json, vault, fix),
         Command::Init { json, vault, actor } => init(json, vault, actor),
         Command::Log {
             note,
@@ -557,7 +565,65 @@ fn emit_init(json: bool, report: &mnemic_core::InitReport) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn check(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>) -> ExitCode {
+fn check_fix_cmd(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>) -> ExitCode {
+    let start = path.clone().unwrap_or_else(|| PathBuf::from("."));
+    let opened = mnemic_core::open_vault(&start, vault.as_deref());
+    let vault = match opened {
+        Ok(vault) => vault,
+        Err(err) => {
+            let (code, message) = fatal_from_vault(err);
+            return emit(json, fatal_envelope(code, message), exit_code(code));
+        }
+    };
+    let target = path.unwrap_or_else(|| vault.root.clone());
+    match check_fix(FixRequest {
+        vault: &vault,
+        path: &target,
+        clock: &SystemClock,
+        lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,
+    }) {
+        Ok(outcome) => {
+            let envelope = fix_envelope(&outcome);
+            let status = if outcome.report.findings.is_empty() {
+                0
+            } else {
+                exit_code(EnvelopeCode::CheckFailed)
+            };
+            if !json {
+                if let Some(data) = &envelope.data {
+                    if let Some(changes) = &data.changes {
+                        for change in changes {
+                            let field = match change.field {
+                                mnemic_core::FixField::Id => "id",
+                                mnemic_core::FixField::Type => "type",
+                            };
+                            println!("{field} {} {}", change.path, change.new);
+                        }
+                    }
+                }
+            }
+            emit(json, envelope, status)
+        }
+        Err(err) => {
+            let (code, message) = fatal_from_fix(err);
+            emit(json, fatal_envelope(code, message), exit_code(code))
+        }
+    }
+}
+
+fn fatal_from_fix(err: FixError) -> (EnvelopeCode, String) {
+    match err {
+        FixError::Usage(message) => (EnvelopeCode::Usage, message),
+        FixError::Io(message) => (EnvelopeCode::Io, message),
+        FixError::LockHeld { .. } => (EnvelopeCode::LockHeld, err.to_string()),
+        FixError::Outside(message) => (EnvelopeCode::OutsideVault, message),
+    }
+}
+
+fn check(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>, fix: bool) -> ExitCode {
+    if fix {
+        return check_fix_cmd(path, json, vault);
+    }
     let start = path.clone().unwrap_or_else(|| PathBuf::from("."));
     let opened = mnemic_core::open_vault(&start, vault.as_deref());
     let vault = match opened {

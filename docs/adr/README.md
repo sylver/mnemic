@@ -12,6 +12,7 @@
 | [0008](0008-get-and-links.md) | get and links share the vault index | Accepted |
 | [0009](0009-search-scans-the-vault.md) | Search scans the parsed vault | Accepted |
 | [0010](0010-new-note.md) | new files one note under the write lock | Accepted |
+| [0011](0011-check-fix.md) | check --fix inserts only derived id and type | Accepted |
 
 ## Rules
 

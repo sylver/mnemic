@@ -6,6 +6,7 @@ mod check;
 mod clock;
 mod contract;
 mod edit;
+mod fix;
 mod frontmatter;
 mod index;
 mod init;
@@ -23,9 +24,10 @@ pub use clock::{Clock, FixedClock, SystemClock};
 pub use contract::{
     exit_code, fatal_envelope, fatal_envelope_with, findings_envelope, render_contract,
     success_envelope, to_json, CheckData, CheckEnvelope, EnvelopeCode, ErrorObject, Finding,
-    FindingCode,
+    FindingCode, FixChange, FixField,
 };
 pub use edit::{EditError, FrontmatterEdit};
+pub use fix::{check_fix, fix_envelope, FixError, FixOutcome, FixRequest, FIX_ID_SEED};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
 pub use index::{index_vault, IndexedNote, LinkEdge, LinkSets, ResolveError, Resolved, VaultIndex};
 pub use init::{init_vault, InitData, InitError, InitReport, InitRequest, InitSuccess};

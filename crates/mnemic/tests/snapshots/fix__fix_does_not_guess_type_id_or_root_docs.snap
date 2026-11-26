@@ -1,0 +1,28 @@
+---
+source: crates/mnemic/tests/fix.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing type",
+        "path": "misc/orphan.md"
+      },
+      {
+        "code": "BAD_ID",
+        "message": "id must be a 26-character ULID",
+        "path": "people/bad-id.md"
+      }
+    ],
+    "warnings": [],
+    "changes": []
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 2 errors",
+    "details": {}
+  }
+}
