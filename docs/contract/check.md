@@ -38,6 +38,6 @@ Unexpected I/O uses `IO` and exit 1. Every other fatal code and `CHECK_FAILED` u
 | `UNKNOWN_TYPE` | `type` is not in the loaded pack |
 | `ALIAS_CONTACT` | An `aliases` entry is an email address or a phone number |
 | `SCHEMA_VERSION_AHEAD` | The note `schema_version` is newer than the loaded type |
-| `INVALID_PACK` | A type pack file is missing a required key or is not valid TOML |
+| `INVALID_PACK` | A type pack file is missing a required key, is not valid TOML, or is a symlink or path outside the vault |
 
 The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).

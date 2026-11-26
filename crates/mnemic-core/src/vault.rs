@@ -111,6 +111,28 @@ pub fn load_vault(root: &Path) -> Result<Vault, VaultError> {
     })
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ConfineError {
+    Io(String),
+    Outside(String),
+}
+
+/// Canonical `path` when it is `vault_root` or a path inside that root.
+pub(crate) fn canonicalize_within(
+    vault_root: &Path,
+    path: &Path,
+) -> Result<(PathBuf, PathBuf), ConfineError> {
+    let root = fs::canonicalize(vault_root).map_err(|err| ConfineError::Io(err.to_string()))?;
+    let start = fs::canonicalize(path).map_err(|err| ConfineError::Io(err.to_string()))?;
+    if start != root && !start.starts_with(&root) {
+        return Err(ConfineError::Outside(format!(
+            "{} is outside the vault",
+            path.display()
+        )));
+    }
+    Ok((root, start))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

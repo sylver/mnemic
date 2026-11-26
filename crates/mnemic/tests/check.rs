@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Output;
 
 use assert_cmd::Command;
@@ -136,6 +137,125 @@ fn invalid_pack_uses_the_findings_shape() {
     assert!(stdout.contains("\"INVALID_PACK\""));
     assert!(stdout.contains("\"CHECK_FAILED\""));
     insta::assert_snapshot!(stdout);
+}
+
+#[test]
+fn overlay_vault_accepts_replaced_and_custom_types() {
+    let stdout = assert_json(&["check", "fixtures/overlay", "--json"], 0);
+    insta::assert_snapshot!(stdout);
+}
+
+#[test]
+fn overlay_required_field_comes_from_the_replacement() {
+    let stdout = assert_json(&["check", "fixtures/overlay-gap", "--json"], 2);
+    assert!(stdout.contains("\"MISSING_FIELD\""));
+    assert!(stdout.contains("missing badge"));
+    assert!(!stdout.contains("INVALID_PACK"));
+}
+
+#[test]
+fn malformed_overlay_toml_is_invalid_pack() {
+    let stdout = assert_json(&["check", "fixtures/overlay-malformed", "--json"], 2);
+    assert!(stdout.contains("\"INVALID_PACK\""));
+    assert!(stdout.contains("\"CHECK_FAILED\""));
+}
+
+#[test]
+fn folder_clash_is_invalid_pack() {
+    let stdout = assert_json(&["check", "fixtures/overlay-clash", "--json"], 2);
+    assert!(stdout.contains("\"INVALID_PACK\""));
+    assert!(stdout.contains("notes"));
+}
+
+#[test]
+fn overlay_schema_version_governs_ahead_and_is_not_invalid_pack() {
+    let ok = assert_json(
+        &[
+            "check",
+            "fixtures/overlay-low-version/people/current.md",
+            "--json",
+        ],
+        0,
+    );
+    assert!(ok.contains("\"ok\": true"));
+    let ahead = assert_json(
+        &[
+            "check",
+            "fixtures/overlay-low-version/people/ahead.md",
+            "--json",
+        ],
+        2,
+    );
+    assert!(ahead.contains("\"SCHEMA_VERSION_AHEAD\""));
+    assert!(ahead.contains("ahead of person 1"));
+    assert!(!ahead.contains("INVALID_PACK"));
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_overlay_file_is_invalid_pack_without_outside_text() {
+    use std::os::unix::fs::symlink;
+
+    let root = std::env::temp_dir().join(format!("mnemic-overlay-file-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let vault = root.join("vault");
+    fs::create_dir_all(vault.join("types")).expect("vault");
+    fs::write(
+        vault.join("mnemic.toml"),
+        "schema_version = 1\nactor = \"sylver\"\n",
+    )
+    .expect("config");
+    let outside = root.join("org.toml");
+    fs::write(
+        &outside,
+        "SECRET_OVERLAY_FILE_OUTSIDE\nschema_version = 1\nfolder = \"orgs\"\n",
+    )
+    .expect("outside");
+    symlink(&outside, vault.join("types/org.toml")).expect("symlink");
+    let stdout = assert_json_at(&vault, 2);
+    assert!(stdout.contains("\"INVALID_PACK\""));
+    assert!(stdout.contains("types/org.toml"));
+    assert!(!stdout.contains("SECRET_OVERLAY_FILE_OUTSIDE"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_types_dir_does_not_apply_an_outside_pack() {
+    use std::os::unix::fs::symlink;
+
+    let root = std::env::temp_dir().join(format!("mnemic-overlay-dir-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let vault = root.join("vault");
+    let outside = root.join("outside-types");
+    fs::create_dir_all(vault.join("relics")).expect("vault");
+    fs::create_dir_all(&outside).expect("outside");
+    fs::write(
+        vault.join("mnemic.toml"),
+        "schema_version = 1\nactor = \"sylver\"\n",
+    )
+    .expect("config");
+    fs::write(
+        outside.join("relic.toml"),
+        "schema_version = 1\nfolder = \"relics\"\ntimeline = false\nfield = []\n[state]\nvalues = [\"kept\"]\n",
+    )
+    .expect("relic");
+    fs::write(
+        vault.join("relics/one.md"),
+        "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FB1\ntype: relic\nschema_version: 1\ntitle: One\ncreated: 2026-11-23T00:00:00Z\nupdated: 2026-11-23T00:00:00Z\ncreated_by: sylver\nstatus: active\nstate: kept\n---\n\nA relic.\n",
+    )
+    .expect("note");
+    symlink(&outside, vault.join("types")).expect("symlink");
+    let stdout = assert_json_at(&vault, 2);
+    assert!(stdout.contains("\"INVALID_PACK\""));
+    assert!(stdout.contains("types"));
+    assert!(!stdout.contains("relic.toml"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+fn assert_json_at(path: &Path, code: i32) -> String {
+    let path = path.to_str().expect("utf-8 path");
+    assert_json(&["check", path, "--json"], code)
 }
 
 #[test]

@@ -1,4 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::Path;
 
 use thiserror::Error;
 use toml::Value;
@@ -47,6 +49,35 @@ impl Pack {
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.types.keys().map(String::as_str)
     }
+
+    /// Same-name entries replace the declaration whole. Folder strings must stay unique.
+    pub fn overlay(mut self, overlay: Pack) -> Result<Pack, PackError> {
+        for (name, def) in overlay.types {
+            self.types.insert(name, def);
+        }
+        self.ensure_unique_folders()?;
+        Ok(self)
+    }
+
+    fn ensure_unique_folders(&self) -> Result<(), PackError> {
+        let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
+        for def in self.types.values() {
+            for folder in &def.folders {
+                if let Some(other) = seen.insert(folder.as_str(), def.name.as_str()) {
+                    let (left, right) = if other <= def.name.as_str() {
+                        (other, def.name.as_str())
+                    } else {
+                        (def.name.as_str(), other)
+                    };
+                    return Err(invalid(
+                        "types",
+                        format!("folder {folder} claimed by {left} and {right}"),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn core_pack() -> Result<Pack, PackError> {
@@ -64,6 +95,119 @@ pub fn core_pack() -> Result<Pack, PackError> {
     ])
 }
 
+pub fn core_template(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "decision" => include_str!("../pack/templates/decision.md"),
+        "idea" => include_str!("../pack/templates/idea.md"),
+        "journal" => include_str!("../pack/templates/journal.md"),
+        "note" => include_str!("../pack/templates/note.md"),
+        "org" => include_str!("../pack/templates/org.md"),
+        "person" => include_str!("../pack/templates/person.md"),
+        "place" => include_str!("../pack/templates/place.md"),
+        "project" => include_str!("../pack/templates/project.md"),
+        "source" => include_str!("../pack/templates/source.md"),
+        "topic" => include_str!("../pack/templates/topic.md"),
+        _ => return None,
+    })
+}
+
+pub fn resolve_pack(vault_root: &Path) -> Result<Pack, PackError> {
+    let core = core_pack()?;
+    let dir = vault_root.join("types");
+    match fs::symlink_metadata(&dir) {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(core),
+        Err(_) => return Err(confined("types")),
+        Ok(meta) if meta.file_type().is_symlink() => return Err(confined("types")),
+        Ok(meta) if !meta.is_dir() => return Ok(core),
+        Ok(_) => {}
+    }
+    if crate::vault::canonicalize_within(vault_root, &dir).is_err() {
+        return Err(confined("types"));
+    }
+    core.overlay(load_overlay_dir(vault_root)?)
+}
+
+pub fn load_overlay_dir(vault_root: &Path) -> Result<Pack, PackError> {
+    let dir = vault_root.join("types");
+    let mut paths = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|_| confined("types"))?;
+    for entry in entries {
+        let entry = entry.map_err(|_| confined("types"))?;
+        let name = entry.file_name();
+        let Some(file_name) = name.to_str() else {
+            continue;
+        };
+        let Some(type_name) = file_name.strip_suffix(".toml") else {
+            continue;
+        };
+        let rel = format!("types/{file_name}");
+        if !plain_type_name(type_name) {
+            return Err(confined(&rel));
+        }
+        let path = entry.path();
+        let meta = fs::symlink_metadata(&path).map_err(|_| confined(&rel))?;
+        if meta.file_type().is_symlink() {
+            return Err(confined(&rel));
+        }
+        if !meta.is_file() {
+            continue;
+        }
+        if crate::vault::canonicalize_within(vault_root, &path).is_err() {
+            return Err(confined(&rel));
+        }
+        paths.push((type_name.to_string(), path, rel));
+    }
+    paths.sort();
+    let mut loaded = Vec::with_capacity(paths.len());
+    for (name, path, rel) in paths {
+        let text = fs::read_to_string(&path).map_err(|_| confined(&rel))?;
+        loaded.push((name, text));
+    }
+    let files: Vec<(&str, &str)> = loaded
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect();
+    load_pack(files)
+}
+
+/// Body template for `new`. `<vault>/types/<type>.md` replaces the embedded template.
+/// `check` does not call this. `None` means the template is missing.
+pub fn template_body(vault_root: &Path, name: &str) -> Result<Option<String>, PackError> {
+    let rel = format!("types/{name}.md");
+    if !plain_type_name(name) {
+        return Err(confined(&rel));
+    }
+    let path = vault_root.join("types").join(format!("{name}.md"));
+    match fs::symlink_metadata(&path) {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err(confined(&rel)),
+        Ok(meta) if meta.file_type().is_symlink() => return Err(confined(&rel)),
+        Ok(meta) if !meta.is_file() => {}
+        Ok(_) => {
+            if crate::vault::canonicalize_within(vault_root, &path).is_err() {
+                return Err(confined(&rel));
+            }
+            return fs::read_to_string(&path)
+                .map(Some)
+                .map_err(|_| confined(&rel));
+        }
+    }
+    Ok(core_template(name).map(str::to_string))
+}
+
+fn plain_type_name(name: &str) -> bool {
+    match name.chars().next() {
+        Some(first) if first != '.' => {
+            !name.contains('/') && !name.contains('\\') && !name.contains("..")
+        }
+        _ => false,
+    }
+}
+
+fn confined(rel: &str) -> PackError {
+    invalid(rel, rel)
+}
+
 pub fn load_pack<'a>(
     files: impl IntoIterator<Item = (&'a str, &'a str)>,
 ) -> Result<Pack, PackError> {
@@ -74,7 +218,9 @@ pub fn load_pack<'a>(
             return Err(invalid(name, "duplicate type"));
         }
     }
-    Ok(Pack { types })
+    let pack = Pack { types };
+    pack.ensure_unique_folders()?;
+    Ok(pack)
 }
 
 fn parse_type(name: &str, text: &str) -> Result<TypeDef, PackError> {
@@ -266,6 +412,152 @@ mod tests {
     fn malformed_pack_toml_is_invalid() {
         let err = load_pack([("person", "folder = [")]).expect_err("toml");
         assert!(matches!(err, PackError::Invalid { .. }));
+    }
+
+    #[test]
+    fn core_templates_are_body_only_markdown() {
+        let pack = core_pack().expect("core pack");
+        for name in pack.names() {
+            let body = core_template(name).unwrap_or_else(|| panic!("missing template {name}"));
+            assert!(!body.contains("{{"), "{name}");
+            assert!(!body.contains("---"), "{name}");
+            assert!(!body.contains("visibility"), "{name}");
+        }
+    }
+
+    #[test]
+    fn same_name_overlay_replaces_the_declaration_whole() {
+        let base = core_pack().expect("core");
+        let overlay = load_pack([(
+            "person",
+            "schema_version = 1\nfolder = \"folks\"\ntimeline = false\n[state]\nvalues = [\"current\"]\n[[field]]\nname = \"badge\"\ntype = \"string\"\nrequired = true\n",
+        )])
+        .expect("overlay");
+        let custom = load_pack([(
+            "quest",
+            "schema_version = 1\nfolder = \"quests\"\ntimeline = false\nfield = []\n[state]\nvalues = [\"open\"]\n",
+        )])
+        .expect("custom");
+        let merged = base
+            .overlay(overlay)
+            .expect("replace")
+            .overlay(custom)
+            .expect("add");
+        let person = merged.get("person").expect("person");
+        assert_eq!(person.folders, ["folks"]);
+        assert_eq!(person.schema_version, 1);
+        assert_eq!(person.fields.len(), 1);
+        assert_eq!(person.fields[0].name, "badge");
+        assert!(person.fields[0].required);
+        assert_eq!(merged.get("quest").expect("quest").folders, ["quests"]);
+        assert_eq!(
+            merged.get("note").expect("note").folders,
+            ["inbox".to_string(), "notes".to_string()]
+        );
+    }
+
+    #[test]
+    fn lower_overlay_schema_version_is_the_loaded_declaration() {
+        let base = load_pack([(
+            "person",
+            "schema_version = 2\nfolder = \"people\"\ntimeline = false\nfield = []\n[state]\nvalues = [\"current\"]\n",
+        )])
+        .expect("base");
+        let overlay = load_pack([(
+            "person",
+            "schema_version = 1\nfolder = \"people\"\ntimeline = false\nfield = []\n[state]\nvalues = [\"current\"]\n",
+        )])
+        .expect("overlay");
+        let merged = base.overlay(overlay).expect("lower version is valid");
+        assert_eq!(merged.get("person").expect("person").schema_version, 1);
+    }
+
+    #[test]
+    fn good_fixture_bodies_match_shipped_templates() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/good");
+        let notes = [
+            ("decisions/folder.md", "decision"),
+            ("ideas/pack.md", "idea"),
+            ("log/welcome.md", "journal"),
+            ("notes/scratch.md", "note"),
+            ("orgs/rivendell.md", "org"),
+            ("people/ada.md", "person"),
+            ("places/shire.md", "place"),
+            ("projects/mnemic.md", "project"),
+            ("sources/blob.md", "source"),
+            ("topics/types.md", "topic"),
+        ];
+        for (rel, type_name) in notes {
+            let text = fs::read_to_string(root.join(rel)).expect(rel);
+            let note = crate::frontmatter::parse_note(&text).expect(rel);
+            assert_eq!(
+                note.body,
+                core_template(type_name).expect(type_name),
+                "{rel}"
+            );
+        }
+    }
+
+    #[test]
+    fn vault_template_file_replaces_the_embedded_body() {
+        let dir = std::env::temp_dir().join(format!("mnemic-template-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("types")).expect("dir");
+        fs::write(dir.join("types/note.md"), "Custom body.\n").expect("write");
+        let body = template_body(&dir, "note")
+            .expect("template")
+            .expect("present");
+        assert_eq!(body, "Custom body.\n");
+        assert!(template_body(&dir, "quest").expect("missing").is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn folder_clash_is_invalid_pack() {
+        let base = core_pack().expect("core");
+        let overlay = load_pack([(
+            "person",
+            "schema_version = 1\nfolder = \"notes\"\ntimeline = false\nfield = []\n[state]\nvalues = [\"current\"]\n",
+        )])
+        .expect("overlay");
+        let err = base.overlay(overlay).expect_err("clash");
+        assert!(matches!(err, PackError::Invalid { .. }));
+        assert!(err.to_string().contains("notes"));
+    }
+
+    #[test]
+    fn template_body_rejects_a_name_that_leaves_the_vault() {
+        let root =
+            std::env::temp_dir().join(format!("mnemic-template-escape-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let vault = root.join("a/vault");
+        fs::create_dir_all(vault.join("types")).expect("vault");
+        fs::write(root.join("x.md"), "SECRET_TEMPLATE_ESCAPE\n").expect("outside");
+        let err = template_body(&vault, "../../../x").expect_err("escape");
+        let message = err.to_string();
+        assert!(message.contains("types/../../../x.md"), "{message}");
+        assert!(!message.contains("SECRET_TEMPLATE_ESCAPE"), "{message}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn template_body_rejects_a_symlinked_markdown_file() {
+        use std::os::unix::fs::symlink;
+
+        let root =
+            std::env::temp_dir().join(format!("mnemic-template-link-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let vault = root.join("vault");
+        fs::create_dir_all(vault.join("types")).expect("vault");
+        let outside = root.join("person.md");
+        fs::write(&outside, "SECRET_TEMPLATE_LINK\n").expect("outside");
+        symlink(&outside, vault.join("types/person.md")).expect("symlink");
+        let err = template_body(&vault, "person").expect_err("symlink");
+        let message = err.to_string();
+        assert!(message.contains("types/person.md"), "{message}");
+        assert!(!message.contains("SECRET_TEMPLATE_LINK"), "{message}");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

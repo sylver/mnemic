@@ -30,14 +30,13 @@ pub enum CheckFatal {
 }
 
 pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal> {
-    let start = canonicalize(path)?;
-    let root = canonicalize(&vault.root)?;
-    if start != root && !start.starts_with(&root) {
-        return Err(CheckFatal::Usage(format!(
-            "{} is outside the vault",
-            path.display()
-        )));
-    }
+    let (root, start) = match crate::vault::canonicalize_within(&vault.root, path) {
+        Ok(confined) => confined,
+        Err(crate::vault::ConfineError::Outside(message)) => {
+            return Err(CheckFatal::Usage(message));
+        }
+        Err(crate::vault::ConfineError::Io(message)) => return Err(CheckFatal::Io(message)),
+    };
     let mut files = Vec::new();
     if start.is_file() {
         if is_note(&root, &start) {
@@ -47,7 +46,7 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal
         collect_notes(&root, &start, &mut files)?;
     }
     files.sort();
-    let pack = match pack::core_pack() {
+    let pack = match pack::resolve_pack(&root) {
         Ok(pack) => pack,
         Err(err) => return Ok(vec![invalid_pack_finding(&err)]),
     };
@@ -333,6 +332,13 @@ pub fn is_note(vault_root: &Path, path: &Path) -> bool {
     if !name.ends_with(".md") || name == "README.md" || name == "AGENTS.md" {
         return false;
     }
+    if rel
+        .components()
+        .next()
+        .is_some_and(|component| component.as_os_str() == "types")
+    {
+        return false;
+    }
     if rel.components().any(|component| {
         component
             .as_os_str()
@@ -372,10 +378,6 @@ fn rel_path(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
-fn canonicalize(path: &Path) -> Result<PathBuf, CheckFatal> {
-    fs::canonicalize(path).map_err(|err| CheckFatal::Io(err.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +395,7 @@ mod tests {
             Path::new("/vault/log/.welcome.mnemic-tmp-1.md")
         ));
         assert!(!is_note(root, Path::new("/vault/sources/raw/blob.md")));
+        assert!(!is_note(root, Path::new("/vault/types/person.md")));
     }
 
     #[test]
