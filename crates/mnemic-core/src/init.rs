@@ -92,7 +92,7 @@ pub fn init_vault(request: InitRequest<'_>) -> Result<InitReport, InitError> {
         let mut created = Vec::new();
         let mut skipped = Vec::new();
         let toml_path = target.join("mnemic.toml");
-        if toml_path.is_file() {
+        if path_present(&toml_path)? {
             skipped.push("mnemic.toml".to_string());
         } else {
             txn.atomic_write(&toml_path, &toml_body)?;
@@ -186,8 +186,15 @@ fn enclosing_vault_for_missing(target: &Path) -> Result<Option<PathBuf>, InitErr
 }
 
 fn classify_config(path: &Path) -> Result<(), InitError> {
-    if !path.exists() {
-        return Ok(());
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(io_err(err)),
+    };
+    if !meta.file_type().is_file() {
+        return Err(InitError::Io(
+            "refusing to replace non-regular mnemic.toml".to_string(),
+        ));
     }
     let text = fs::read_to_string(path).map_err(io_err)?;
     match parse_vault_config(&text) {
