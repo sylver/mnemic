@@ -42,11 +42,11 @@ mnemic init --as <name> --vault /path/to/vault
 
 `--as` writes `actor` into `mnemic.toml` when that file is created. `mnemic new` needs an author. If you omit `--as` and `mnemic.toml` has no `actor`, a later `new` exits with a usage error. You can set `actor` in `mnemic.toml` instead of passing `--as`.
 
-`init` also writes `AGENTS.md`, a `.gitignore` line for `.mnemic/`, and one folder per core type. `.mnemic/` is local tool state. `mnemic.toml` is the vault config. Pass `--vault` as the directory to create. Without `--vault`, `init` uses the current directory and does not walk to a parent vault.
+`init` also writes `AGENTS.md`, a `.gitignore` line for `.mnemic/`, and one `.gitkeep` in each empty type folder from the core pack. `.mnemic/` is local tool state. `mnemic.toml` is the vault config. Pass `--vault` as the directory to create. Without `--vault`, `init` uses the current directory and does not walk to a parent vault.
 
 ## Commands
 
-These are the v1 commands. Names match `mnemic --help`.
+These are the v1 commands.
 
 - `check` checks core frontmatter in a vault or one note. `--fix` inserts a missing id, and a missing type when the folder maps to one type.
 - `init` scaffolds a vault in the target directory.
@@ -62,5 +62,5 @@ There is no `index` command, no `migrate` command, and no `mcp` command.
 ## Further reading
 
 - Note format, vault root, and `mnemic.toml` keys are in [docs/format.md](docs/format.md).
-- The JSON envelopes for the commands are in [docs/contract/check.md](docs/contract/check.md). The schema is [docs/contract/check.schema.json](docs/contract/check.schema.json).
+- The generated JSON contract (envelopes and error codes) is in [docs/contract/check.md](docs/contract/check.md), with the schema in [docs/contract/check.schema.json](docs/contract/check.schema.json).
 - How to change this repository is in [AGENTS.md](AGENTS.md).
