@@ -35,6 +35,16 @@
     "CheckData": {
       "type": "object",
       "properties": {
+        "changes": {
+          "description": "Present on `check --fix`. Empty when that run wrote nothing.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/FixChange"
+          }
+        },
         "errors": {
           "type": "array",
           "items": {
@@ -151,6 +161,39 @@
         "BROKEN_LINK",
         "SHA256_DRIFT",
         "AMBIGUOUS"
+      ]
+    },
+    "FixChange": {
+      "description": "One key `check --fix` inserted. `old` is null. Existing values are not replaced.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "$ref": "#/$defs/FixField"
+        },
+        "new": {
+          "type": "string"
+        },
+        "old": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "field",
+        "new"
+      ]
+    },
+    "FixField": {
+      "type": "string",
+      "enum": [
+        "id",
+        "type"
       ]
     }
   }

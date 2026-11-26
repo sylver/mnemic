@@ -1,0 +1,20 @@
+---
+source: crates/mnemic/tests/fix.rs
+expression: stdout
+---
+{
+  "ok": true,
+  "data": {
+    "errors": [],
+    "warnings": [],
+    "changes": [
+      {
+        "path": "people/quoted.md",
+        "field": "id",
+        "old": null,
+        "new": "01KAQ9A800000000E3HVGWEW01"
+      }
+    ]
+  },
+  "error": null
+}

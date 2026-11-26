@@ -1,0 +1,61 @@
+---
+source: crates/mnemic/tests/fix.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing created",
+        "path": "inbox/raw.md"
+      },
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing created_by",
+        "path": "inbox/raw.md"
+      },
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing schema_version",
+        "path": "inbox/raw.md"
+      },
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing status",
+        "path": "inbox/raw.md"
+      },
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing title",
+        "path": "inbox/raw.md"
+      },
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing updated",
+        "path": "inbox/raw.md"
+      }
+    ],
+    "warnings": [],
+    "changes": [
+      {
+        "path": "inbox/raw.md",
+        "field": "id",
+        "old": null,
+        "new": "01KAQ9A800000000E3HVGWEW01"
+      },
+      {
+        "path": "inbox/raw.md",
+        "field": "type",
+        "old": null,
+        "new": "note"
+      }
+    ]
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 6 errors",
+    "details": {}
+  }
+}

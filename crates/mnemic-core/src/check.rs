@@ -37,22 +37,11 @@ pub struct CheckReport {
 }
 
 pub fn check_path(vault: &Vault, path: &Path) -> Result<CheckReport, CheckFatal> {
-    let (root, start) = match crate::vault::canonicalize_within(&vault.root, path) {
-        Ok(confined) => confined,
-        Err(crate::vault::ConfineError::Outside(message)) => {
-            return Err(CheckFatal::Usage(message));
-        }
-        Err(crate::vault::ConfineError::Io(message)) => return Err(CheckFatal::Io(message)),
+    let (root, start, files) = match locate_notes(&vault.root, path) {
+        Ok(located) => located,
+        Err(LocateError::Outside(message)) => return Err(CheckFatal::Usage(message)),
+        Err(LocateError::Io(message)) => return Err(CheckFatal::Io(message)),
     };
-    let mut files = Vec::new();
-    if start.is_file() {
-        if is_note(&root, &start) {
-            files.push(start.clone());
-        }
-    } else {
-        collect_notes(&root, &start, &mut files)?;
-    }
-    files.sort();
     let pack = match pack::resolve_pack(&root) {
         Ok(pack) => pack,
         Err(err) => {
@@ -373,6 +362,38 @@ pub fn is_note(vault_root: &Path, path: &Path) -> bool {
         return false;
     }
     !rel.starts_with(Path::new("sources").join("raw"))
+}
+
+pub(crate) enum LocateError {
+    Outside(String),
+    Io(String),
+}
+
+/// Note files under `path`, using [`collect_notes`] for directories.
+/// The start path is confined with `canonicalize_within` before the walk.
+pub(crate) fn locate_notes(
+    vault_root: &Path,
+    path: &Path,
+) -> Result<(PathBuf, PathBuf, Vec<PathBuf>), LocateError> {
+    let (root, start) = match crate::vault::canonicalize_within(vault_root, path) {
+        Ok(confined) => confined,
+        Err(crate::vault::ConfineError::Outside(message)) => {
+            return Err(LocateError::Outside(message));
+        }
+        Err(crate::vault::ConfineError::Io(message)) => return Err(LocateError::Io(message)),
+    };
+    let mut files = Vec::new();
+    if start.is_file() {
+        if is_note(&root, &start) {
+            files.push(start.clone());
+        }
+    } else {
+        collect_notes(&root, &start, &mut files).map_err(|err| match err {
+            CheckFatal::Io(message) | CheckFatal::Usage(message) => LocateError::Io(message),
+        })?;
+    }
+    files.sort();
+    Ok((root, start, files))
 }
 
 pub(crate) fn collect_notes(

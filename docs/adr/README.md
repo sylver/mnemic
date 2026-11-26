@@ -9,6 +9,7 @@
 | [0005](0005-init-scaffold.md) | Init scaffolds one directory and leaves existing files | Accepted |
 | [0006](0006-vault-index.md) | One vault index and one resolver | Accepted |
 | [0007](0007-timeline-log.md) | Timeline lines are appended under one lock | Accepted |
+| [0008](0008-check-fix.md) | check --fix inserts only derived id and type | Accepted |
 | [0008](0008-get-and-links.md) | get and links share the vault index | Accepted |
 | [0009](0009-search-scans-the-vault.md) | Search scans the parsed vault | Accepted |
 | [0010](0010-new-note.md) | new files one note under the write lock | Accepted |

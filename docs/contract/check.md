@@ -35,7 +35,15 @@ Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal cod
 | `SLUG_COLLISION` | 2 |
 | `MISSING_TEMPLATE` | 2 |
 
-`LOCK_HELD` is reserved at exit 75. `check` does not take the vault lock.
+`LOCK_HELD` is exit 75 when `check --fix` waits out the lock timeout. `check` without `--fix` does not take the vault lock.
+
+## `check --fix`
+
+`mnemic check --fix [--json] [--vault <path>] [path]` uses the same discovery as `check`. It inserts a missing `id` (Crockford ULID; the time component comes from the clock, not mtime) and a missing `type` when the note's top-level folder equals exactly one type's `folder` (`folder` is a string or a list; `inbox/` and `notes/` both derive `note`). A file with no frontmatter block gets a new `---` block that holds only those derived keys. A malformed `id`, a folder that maps to no type or to more than one, and every other field stay untouched. `title`, `created`, `updated`, `created_by`, `status`, and the body are not invented. `updated` is not stamped. Root `AGENTS.md` and `README.md` are not notes, so they are not fixed. Bytes outside the inserted lines stay identical.
+
+One write lock covers the vault. Resolve and read happen under that lock. Writes go through `FrontmatterEdit` and `WriteTxn::atomic_write`. A second run on a still-valid result writes nothing. An I/O error after some files were renamed leaves those files fixed. A later run finishes the rest.
+
+`--json` always includes `data.changes` on `--fix`: `{ "path", "field": "id"|"type", "old": null, "new" }`. When findings remain, the shape is `CHECK_FAILED`, exit 2, and `data.changes` still lists what was written. `USAGE`, `VAULT_NOT_FOUND`, `LOCK_HELD`, `IO`, and `OUTSIDE_VAULT` use `data: null`. A path that canonicalizes outside the vault is `OUTSIDE_VAULT` and is not written.
 
 Unexpected I/O uses `IO` and exit 1. Every other fatal code and `CHECK_FAILED` use exit 2.
 

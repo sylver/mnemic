@@ -16,6 +16,26 @@ pub struct CheckEnvelope {
 pub struct CheckData {
     pub errors: Vec<Finding>,
     pub warnings: Vec<Finding>,
+    /// Present on `check --fix`. Empty when that run wrote nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<Vec<FixChange>>,
+}
+
+/// One key `check --fix` inserted. `old` is null. Existing values are not replaced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct FixChange {
+    pub path: String,
+    pub field: FixField,
+    pub old: Option<String>,
+    pub new: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+pub enum FixField {
+    #[serde(rename = "id")]
+    Id,
+    #[serde(rename = "type")]
+    Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -141,6 +161,7 @@ pub fn success_envelope() -> CheckEnvelope {
         data: Some(CheckData {
             errors: Vec::new(),
             warnings: Vec::new(),
+            changes: None,
         }),
         error: None,
     }
@@ -156,7 +177,11 @@ pub fn findings_envelope(
     let label = if count == 1 { "error" } else { "errors" };
     CheckEnvelope {
         ok: false,
-        data: Some(CheckData { errors, warnings }),
+        data: Some(CheckData {
+            errors,
+            warnings,
+            changes: None,
+        }),
         error: Some(ErrorObject {
             code: EnvelopeCode::CheckFailed,
             message: format!("check found {count} {label}"),
@@ -249,7 +274,27 @@ fn render_markdown() -> String {
         out.push_str(&format!("| `{name}` | {} |\n", exit_code(code)));
     }
     out.push_str(
-        "\n`LOCK_HELD` is reserved at exit 75. `check` does not take the vault lock.\n\n\
+        "\n`LOCK_HELD` is exit 75 when `check --fix` waits out the lock timeout. \
+         `check` without `--fix` does not take the vault lock.\n\n\
+         ## `check --fix`\n\n\
+         `mnemic check --fix [--json] [--vault <path>] [path]` uses the same discovery as `check`. \
+         It inserts a missing `id` (Crockford ULID; the time component comes from the clock, not mtime) \
+         and a missing `type` when the note's top-level folder equals exactly one type's `folder` \
+         (`folder` is a string or a list; `inbox/` and `notes/` both derive `note`). \
+         A file with no frontmatter block gets a new `---` block that holds only those derived keys. \
+         A malformed `id`, a folder that maps to no type or to more than one, and every other field \
+         stay untouched. `title`, `created`, `updated`, `created_by`, `status`, and the body are not invented. \
+         `updated` is not stamped. Root `AGENTS.md` and `README.md` are not notes, so they are not fixed. \
+         Bytes outside the inserted lines stay identical.\n\n\
+         One write lock covers the vault. Resolve and read happen under that lock. \
+         Writes go through `FrontmatterEdit` and `WriteTxn::atomic_write`. \
+         A second run on a still-valid result writes nothing. \
+         An I/O error after some files were renamed leaves those files fixed. A later run finishes the rest.\n\n\
+         `--json` always includes `data.changes` on `--fix`: \
+         `{ \"path\", \"field\": \"id\"|\"type\", \"old\": null, \"new\" }`. \
+         When findings remain, the shape is `CHECK_FAILED`, exit 2, and `data.changes` still lists what was written. \
+         `USAGE`, `VAULT_NOT_FOUND`, `LOCK_HELD`, `IO`, and `OUTSIDE_VAULT` use `data: null`. \
+         A path that canonicalizes outside the vault is `OUTSIDE_VAULT` and is not written.\n\n\
          Unexpected I/O uses `IO` and exit 1. Every other fatal code and `CHECK_FAILED` use exit 2.\n\n\
          ## Finding codes\n\n\
          | Code | Meaning |\n\
