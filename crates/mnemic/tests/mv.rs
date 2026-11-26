@@ -303,6 +303,64 @@ fn missing_source_basename_does_not_move_an_unrelated_note() {
 }
 
 #[test]
+fn outside_destination_leaves_the_source_and_creates_nothing_outside() {
+    let vault = copy_vault();
+    let outside = tempfile::tempdir().expect("outside");
+    std::os::unix::fs::symlink(outside.path(), vault.join("escape")).expect("symlink");
+    let source = vault.join("people/old-slug.md");
+    let before = fs::read(&source).expect("source");
+    let output = run(
+        &vault,
+        &["mv", "people/old-slug.md", "escape/new-slug.md", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert_eq!(json(&output)["error"]["code"], "OUTSIDE_VAULT");
+    assert_eq!(fs::read(&source).expect("source"), before);
+    assert!(fs::read_dir(outside.path()).expect("outside").next().is_none());
+
+    let vault = copy_vault();
+    let source = vault.join("people/old-slug.md");
+    let before = fs::read(&source).expect("source");
+    let escaped = vault.join("people/../../escaped.md");
+    let output = run(
+        &vault,
+        &[
+            "mv",
+            "people/old-slug.md",
+            escaped.to_str().expect("utf-8"),
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert_eq!(json(&output)["error"]["code"], "OUTSIDE_VAULT");
+    assert_eq!(fs::read(&source).expect("source"), before);
+    assert!(!escaped.exists());
+}
+
+#[test]
+fn slug_change_stamps_updated_when_the_alias_is_already_present() {
+    let vault = copy_vault();
+    let source = vault.join("people/old-slug.md");
+    let text = fs::read_to_string(&source)
+        .unwrap()
+        .replace("aliases:\n  - Kept", "aliases:\n  - Kept\n  - old-slug");
+    fs::write(&source, &text).unwrap();
+    let output = run(
+        &vault,
+        &["mv", "people/old-slug.md", "people/new-slug.md", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert_eq!(json(&output)["data"]["alias_added"], false);
+    let moved = fs::read_to_string(vault.join("people/new-slug.md")).unwrap();
+    assert_eq!(alias_block(&text), alias_block(&moved));
+    let updated = moved
+        .lines()
+        .find(|line| line.starts_with("updated:"))
+        .expect("updated");
+    assert_ne!(updated, "updated: 2026-11-23T00:00:00Z");
+}
+
+#[test]
 fn directory_destination_keeps_the_basename_and_creates_parents() {
     let vault = copy_vault();
     fs::create_dir_all(vault.join("notes")).unwrap();
