@@ -109,3 +109,19 @@ An entry that is not a regular file inside the vault is not a note, so it is not
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, and `noop`. `path` is vault-relative. `noop` is true only when that `id` is already the note at that path. The file is not rewritten.
 
 `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS`, `SLUG_COLLISION`, `MISSING_TEMPLATE`, `USAGE`, and `OUTSIDE_VAULT` are fatal for `new`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `BAD_ID` means `--id` is not a 26-character Crockford ULID. `ID_EXISTS` means that id is already a note at a different path. `SLUG_COLLISION` means the new filename slug equals another note's slug or alias after NFC case-folding. `MISSING_TEMPLATE` means the type has no body template. `USAGE` includes an empty slug and a missing author. The author message names both `--as` and `actor`.
+
+## `mnemic init`
+
+`mnemic init [--as <actor>] [--vault <dir>] --json` prints one JSON document. The target is `--vault`, or the current directory. `init` does not walk to a parent vault.
+
+Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`, and `skipped`. `vault` is the target directory. `created` lists paths this call wrote. `skipped` lists paths left in place because they already existed.
+
+`USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal for `init`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `NESTED_VAULT` means a parent of the target already has `mnemic.toml`.
+
+## `mnemic mv`
+
+`mnemic mv <note> <dest> [--no-rewrite] [--vault <dir>] --json` prints one JSON document. `<note>` is a path, id, slug, or alias. `<dest>` is a vault-relative file or directory.
+
+Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `from`, `to`, `alias_added`, and `rewritten`. `from` and `to` are vault-relative paths. `alias_added` is true when this call appended the old slug to `aliases`. `rewritten` lists notes whose incoming wikilinks were updated. `--no-rewrite` leaves those wikilinks unchanged, so `rewritten` is empty.
+
+`USAGE`, `NOT_FOUND`, `AMBIGUOUS`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE` are fatal for `mv`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `DEST_EXISTS` means the destination file is already present. `NOTE_ARCHIVED` means the note status is archived. `ALIAS_NOT_UNIQUE` means the old slug is already an alias of another note. `SLUG_COLLISION` means the destination slug equals another note's slug or alias. `RAW_IMMUTABLE` means the destination is under `sources/raw`. `AMBIGUOUS` lists `error.details.candidates` with `path`.

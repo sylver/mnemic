@@ -827,3 +827,46 @@ fn error_name(code: EnvelopeCode) -> &'static str {
         EnvelopeCode::RawImmutable => "RAW_IMMUTABLE",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::Cli;
+
+    /// A success section is a `##` block whose heading names the subcommand, or
+    /// whose first body line is `mnemic <name> ...`, and that states a success
+    /// envelope (`ok: true` or the word success).
+    fn success_section(markdown: &str, name: &str) -> bool {
+        markdown.split("\n## ").skip(1).any(|section| {
+            let mut lines = section.lines();
+            let heading = lines.next().unwrap_or("");
+            let first_body = lines.find(|line| !line.trim().is_empty()).unwrap_or("");
+            let named =
+                word(heading, name) || (word(first_body, name) && first_body.contains("mnemic"));
+            named
+                && (section.contains("ok: true")
+                    || section.to_ascii_lowercase().contains("success"))
+        })
+    }
+
+    fn word(hay: &str, name: &str) -> bool {
+        hay.split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|token| token.eq_ignore_ascii_case(name))
+    }
+
+    #[test]
+    fn every_subcommand_has_a_success_section() {
+        let (_schema, markdown) = mnemic_core::render_contract().expect("render");
+        let missing: Vec<_> = Cli::command()
+            .get_subcommands()
+            .map(|command| command.get_name().to_string())
+            .filter(|name| !success_section(&markdown, name))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "contract success sections missing for: {}",
+            missing.join(", ")
+        );
+    }
+}
