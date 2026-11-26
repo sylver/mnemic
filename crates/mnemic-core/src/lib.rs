@@ -11,6 +11,7 @@ mod index;
 mod init;
 mod log;
 mod pack;
+mod read;
 mod search;
 mod ulid;
 mod vault;
@@ -19,18 +20,22 @@ pub mod write;
 pub use check::{check_path, invalid_pack_finding, is_note, CheckFatal, CheckReport};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use contract::{
-    exit_code, fatal_envelope, findings_envelope, render_contract, success_envelope, to_json,
-    CheckData, CheckEnvelope, EnvelopeCode, ErrorObject, Finding, FindingCode,
+    exit_code, fatal_envelope, fatal_envelope_with, findings_envelope, render_contract,
+    success_envelope, to_json, CheckData, CheckEnvelope, EnvelopeCode, ErrorObject, Finding,
+    FindingCode,
 };
 pub use edit::{EditError, FrontmatterEdit};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
-pub use index::{index_vault, IndexedNote, ResolveError, Resolved, VaultIndex};
+pub use index::{
+    index_vault, IndexedNote, LinkEdge, LinkSets, ResolveError, Resolved, VaultIndex,
+};
 pub use init::{init_vault, InitData, InitError, InitReport, InitRequest, InitSuccess};
 pub use log::{log_note, LogData, LogError, LogRequest, LogResult, LogSuccess};
 pub use pack::{
     core_pack, core_template, load_overlay_dir, load_pack, resolve_pack, template_body, FieldDef,
     FieldKind, Pack, PackError, TypeDef,
 };
+pub use read::{read_note, Candidate, NoteView, ReadError};
 pub use search::{
     search_vault, SearchData, SearchEnvelope, SearchError, SearchHit, SearchRequest, SearchSection,
 };

@@ -1,0 +1,48 @@
+---
+source: crates/mnemic/tests/get.rs
+expression: stdout
+---
+{
+  "data": {
+    "backlinks": [
+      {
+        "kind": "wikilink",
+        "raw": "old-slug",
+        "source": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+        "target": "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+      }
+    ],
+    "broken": [
+      {
+        "kind": "embed",
+        "raw": "gone.png",
+        "source": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "target": null
+      },
+      {
+        "kind": "wikilink",
+        "raw": "missing-slug",
+        "source": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "target": null
+      }
+    ],
+    "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    "outgoing": [
+      {
+        "kind": "frontmatter:org",
+        "raw": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+        "source": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "target": "01ARZ3NDEKTSV4RRFFQ69G5FAW"
+      },
+      {
+        "kind": "wikilink",
+        "raw": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+        "source": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "target": "01ARZ3NDEKTSV4RRFFQ69G5FAW"
+      }
+    ],
+    "path": "people/old-slug.md"
+  },
+  "error": null,
+  "ok": true
+}

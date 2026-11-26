@@ -1,0 +1,24 @@
+---
+source: crates/mnemic/tests/get.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "AMBIGUOUS",
+    "message": "ambiguous-alias matches people/old-slug.md, people/twin.md",
+    "details": {
+      "candidates": [
+        {
+          "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          "path": "people/old-slug.md"
+        },
+        {
+          "id": "01ARZ3NDEKTSV4RRFFQ69G5FAX",
+          "path": "people/twin.md"
+        }
+      ]
+    }
+  }
+}

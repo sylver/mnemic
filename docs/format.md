@@ -151,3 +151,7 @@ The scanned text is `title`, `aliases`, and the body, including a `## Timeline` 
 Hits with a token in the title come first, then hits with more token occurrences, then a later `updated`, then `id`. `score` is that position starting at 1. The default limit is 20. `section` is `truth` before `## Timeline` and `timeline` from that heading on. `snippet` is the first matching title, alias, or line, at most 200 characters.
 
 Deleting a note removes it from the next search. Root `AGENTS.md` and `README.md` are not notes, so a phrase that exists only there is not a hit. An entry that is not a regular file inside the vault is not a note, so it is not a hit and search does not error. The command does not take `--visibility`.
+
+## Read verbs
+
+`mnemic get <id|slug|alias|path>` prints one note. `mnemic links <note>` prints outgoing links, backlinks, and broken links. Both call `VaultIndex::resolve` and `VaultIndex::link_sets`. They do not write files. A path that leaves the vault, including a symlink whose canonical path is outside, is `OUTSIDE_VAULT` and the file is not read. `links` exits 0 when `broken` is non-empty. `check` remains the failing validator. An ambiguous slug or alias is `AMBIGUOUS` with `error.details.candidates`. A miss is `NOT_FOUND` for an id and for a slug.

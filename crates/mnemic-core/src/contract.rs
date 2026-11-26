@@ -151,13 +151,21 @@ pub fn findings_envelope(
 }
 
 pub fn fatal_envelope(code: EnvelopeCode, message: impl Into<String>) -> CheckEnvelope {
+    fatal_envelope_with(code, message, BTreeMap::new())
+}
+
+pub fn fatal_envelope_with(
+    code: EnvelopeCode,
+    message: impl Into<String>,
+    details: BTreeMap<String, Value>,
+) -> CheckEnvelope {
     CheckEnvelope {
         ok: false,
         data: None,
         error: Some(ErrorObject {
             code,
             message: message.into(),
-            details: BTreeMap::new(),
+            details,
         }),
     }
 }
@@ -191,7 +199,11 @@ fn render_markdown() -> String {
          Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. \
          `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and \
          `NESTED_VAULT` are fatal. They are never entries in `data.errors`. \
-         `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`.\n\n\
+         `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. \
+         `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug \
+         or alias matches more than one note (`error.details.candidates` lists `id` and `path`), \
+         and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a \
+         missing slug both use `NOT_FOUND`.\n\n\
          ## Exit codes\n\n\
          | Code | Exit |\n\
          | --- | --- |\n",
@@ -236,6 +248,17 @@ fn render_markdown() -> String {
          | `BROKEN_LINK` | A wikilink, embed, typed link, or `supersedes` target does not resolve |\n\
          | `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path`, or `path` is not a regular file inside the vault |\n\
          | `AMBIGUOUS` | A link matches more than one note. `error.details.candidates` lists `path`, `link`, and `matches` |\n\n\
+         ## `get` and `links`\n\n\
+         `mnemic get --json` success is `ok: true`, `error: null`, and `data` with \
+         `id`, `path`, `slug`, `title`, `type`, `status`, `frontmatter`, `body`, \
+         `outgoing`, and `backlinks`. Exit 0.\n\n\
+         `mnemic links --json` success is `ok: true`, `error: null`, and `data` with \
+         `id`, `path`, `outgoing`, `backlinks`, and `broken`. Exit 0, including when \
+         `broken` is non-empty. `check` is the command that fails on a broken link.\n\n\
+         An edge has `kind` (`wikilink`, `embed`, or `frontmatter:<field>`), `raw` \
+         (the link text), `source` (the note id that contains the link), and `target` \
+         (the resolved note id, or null when the target is a file or the link did not resolve). \
+         Backlinks are computed. They are not written into Markdown.\n\n\
          The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n\n\
          ## `mnemic log`\n\n\
          `mnemic log <note> <text> --json` prints one JSON document. `<note>` is a path, id, slug, or alias, resolved inside the write lock.\n\n\

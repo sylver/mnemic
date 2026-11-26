@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::thread;
 
+use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
@@ -73,6 +74,27 @@ pub enum Resolved {
 pub enum ResolveError {
     Missing,
     Ambiguous { candidates: Vec<String> },
+}
+
+/// One wikilink, embed, or typed frontmatter edge.
+///
+/// `kind` is `wikilink`, `embed`, or `frontmatter:<field>`. `target` is the
+/// note id when [`VaultIndex::resolve`] returns a note. `source` is the id of
+/// the note that contains the link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LinkEdge {
+    pub kind: String,
+    pub raw: String,
+    pub source: String,
+    pub target: Option<String>,
+}
+
+/// Outgoing edges, backlinks, and unresolved edges for one note id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkSets {
+    pub outgoing: Vec<LinkEdge>,
+    pub backlinks: Vec<LinkEdge>,
+    pub broken: Vec<LinkEdge>,
 }
 
 /// Load every note under `root`. `root` is the vault directory.
@@ -424,6 +446,81 @@ impl VaultIndex {
         Some(hex_sha256(&bytes))
     }
 
+    /// Edges for `id`, using [`VaultIndex::resolve`] for each target.
+    ///
+    /// Resolved edges from this id are `outgoing`. Resolved edges whose
+    /// target is this id are `backlinks`. Edges from this id that are missing
+    /// or ambiguous are `broken`. A resolved file has no note id, so `target`
+    /// is `None` and the edge stays in `outgoing`.
+    pub fn link_sets(&self, id: &str, pack: &Pack) -> LinkSets {
+        let mut edges = Vec::new();
+        for note in &self.notes {
+            for (embed, raw) in &note.wikilinks {
+                let kind = if *embed { "embed" } else { "wikilink" };
+                edges.push(self.edge(note, kind, raw));
+            }
+            for raw in &note.supersedes {
+                edges.push(self.edge(note, "frontmatter:supersedes", raw));
+            }
+            for (field, raw) in &note.typed {
+                if field == "supersedes" {
+                    continue;
+                }
+                if typed_field(pack, &note.type_name, field) {
+                    edges.push(self.edge(note, &format!("frontmatter:{field}"), raw));
+                }
+            }
+        }
+        let mut outgoing = Vec::new();
+        let mut backlinks = Vec::new();
+        let mut broken = Vec::new();
+        for (edge, resolved) in edges {
+            if edge.source == id {
+                if resolved {
+                    outgoing.push(edge.clone());
+                } else {
+                    broken.push(edge.clone());
+                }
+            }
+            if resolved && edge.target.as_deref() == Some(id) {
+                backlinks.push(edge);
+            }
+        }
+        sort_edges(&mut outgoing);
+        sort_edges(&mut backlinks);
+        sort_edges(&mut broken);
+        LinkSets {
+            outgoing,
+            backlinks,
+            broken,
+        }
+    }
+
+    /// Note id stored at a vault-relative path, when the index has that path.
+    pub fn id_at(&self, path: &str) -> Option<&str> {
+        self.notes
+            .iter()
+            .find(|note| note.path == path)
+            .map(|note| note.id.as_str())
+    }
+
+    fn edge(&self, note: &NoteRec, kind: &str, raw: &str) -> (LinkEdge, bool) {
+        let (target, resolved) = match self.resolve(raw) {
+            Ok(Resolved::Note { id, .. }) => (Some(id), true),
+            Ok(Resolved::File { .. }) => (None, true),
+            Err(ResolveError::Missing | ResolveError::Ambiguous { .. }) => (None, false),
+        };
+        (
+            LinkEdge {
+                kind: kind.to_string(),
+                raw: raw.to_string(),
+                source: note.id.clone(),
+                target,
+            },
+            resolved,
+        )
+    }
+
     fn unique_ids(&self) -> BTreeSet<String> {
         self.by_id
             .iter()
@@ -656,6 +753,17 @@ fn fold_key(value: &str) -> String {
 fn hex_sha256(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn sort_edges(edges: &mut [LinkEdge]) {
+    edges.sort_by(|left, right| {
+        (&left.kind, &left.raw, &left.source, &left.target).cmp(&(
+            &right.kind,
+            &right.raw,
+            &right.source,
+            &right.target,
+        ))
+    });
 }
 
 fn finding(code: FindingCode, message: impl Into<String>, path: String) -> Finding {
