@@ -84,7 +84,11 @@
         "BAD_ID",
         "ID_EXISTS",
         "SLUG_COLLISION",
-        "MISSING_TEMPLATE"
+        "MISSING_TEMPLATE",
+        "DEST_EXISTS",
+        "NOTE_ARCHIVED",
+        "ALIAS_NOT_UNIQUE",
+        "RAW_IMMUTABLE"
       ]
     },
     "ErrorObject": {

@@ -10,7 +10,7 @@ A clean tree is `ok: true`, `data.errors` and `data.warnings` empty, `error: nul
 
 Findings (`BAD_ID`, `MISSING_FIELD`, `BAD_FRONTMATTER`, `UNKNOWN_TYPE`, `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`, `DUPLICATE_ID`, `ALIAS_NOT_UNIQUE`, `SUPERSEDED_WITHOUT_INCOMING`, `SUPERSEDES_CYCLE`, `BROKEN_LINK`, `SHA256_DRIFT`, `AMBIGUOUS`) use `ok: false`, `data` with those findings, and `error.code` `CHECK_FAILED`. Exit 2.
 
-Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal. They are never entries in `data.errors`. `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug or alias matches more than one note (`error.details.candidates` lists `id` and `path`), and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a missing slug both use `NOT_FOUND`.
+Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal. They are never entries in `data.errors`. `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug or alias matches more than one note (`error.details.candidates` lists `id` and `path`), and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a missing slug both use `NOT_FOUND`. `mv` adds `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE`. A path that leaves the vault is `OUTSIDE_VAULT`.
 
 ## Exit codes
 
@@ -34,6 +34,10 @@ Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal cod
 | `ID_EXISTS` | 2 |
 | `SLUG_COLLISION` | 2 |
 | `MISSING_TEMPLATE` | 2 |
+| `DEST_EXISTS` | 2 |
+| `NOTE_ARCHIVED` | 2 |
+| `ALIAS_NOT_UNIQUE` | 2 |
+| `RAW_IMMUTABLE` | 2 |
 
 `LOCK_HELD` is exit 75 when `check --fix` waits out the lock timeout. `check` without `--fix` does not take the vault lock.
 

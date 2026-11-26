@@ -93,6 +93,17 @@ pub(crate) fn create_exclusive(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
+pub(crate) fn rename_exclusive(from: &Path, to: &Path) -> Result<(), Error> {
+    use rustix::fs::{renameat_with, RenameFlags, CWD};
+    renameat_with(CWD, from, CWD, to, RenameFlags::NOREPLACE).map_err(io::Error::from)?;
+    let parent = to
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
 pub(crate) fn commit_temp(path: &Path, staged: &Staged) -> Result<(), Error> {
     if is_symlink(path)? {
         let _ = fs::remove_file(&staged.tmp);

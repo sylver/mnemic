@@ -841,51 +841,46 @@ fn ambiguous_finding(path: &str, kind: &str, link: &str, matches: Vec<String>) -
     }
 }
 
-fn wikilink_targets(body: &str) -> Vec<(bool, String)> {
+pub(crate) struct WikilinkSpan {
+    pub embed: bool,
+    pub inner: String,
+    pub inner_start: usize,
+    pub inner_end: usize,
+}
+
+pub(crate) fn wikilink_spans(body: &str) -> Vec<WikilinkSpan> {
     let mut out = Vec::new();
     let mut fence: Option<(u8, usize)> = None;
+    let mut offset = 0;
     for line in body.split_inclusive('\n') {
-        let stripped = line.trim_end_matches(['\n', '\r']);
+        let stripped_len = line.trim_end_matches(['\n', '\r']).len();
+        let stripped = &line[..stripped_len];
         if let Some((marker, len)) = fence {
             if closing_fence(stripped, marker, len) {
                 fence = None;
             }
+            offset += line.len();
             continue;
         }
         if let Some(opened) = opening_fence(stripped) {
             fence = Some(opened);
+            offset += line.len();
             continue;
         }
-        scan_line(stripped, &mut out);
+        scan_line_spans(stripped, offset, &mut out);
+        offset += line.len();
     }
     out
 }
 
-fn opening_fence(line: &str) -> Option<(u8, usize)> {
-    let trimmed = line.trim_start();
-    let bytes = trimmed.as_bytes();
-    if bytes.len() < 3 || (bytes[0] != b'`' && bytes[0] != b'~') {
-        return None;
-    }
-    let marker = bytes[0];
-    let len = bytes.iter().take_while(|byte| **byte == marker).count();
-    if len < 3 {
-        return None;
-    }
-    let info = trimmed[len..].trim();
-    if marker == b'`' && info.contains('`') {
-        return None;
-    }
-    Some((marker, len))
+fn wikilink_targets(body: &str) -> Vec<(bool, String)> {
+    wikilink_spans(body)
+        .into_iter()
+        .map(|link| (link.embed, link.inner))
+        .collect()
 }
 
-fn closing_fence(line: &str, marker: u8, len: usize) -> bool {
-    let trimmed = line.trim();
-    let bytes = trimmed.as_bytes();
-    bytes.len() >= len && bytes.iter().all(|byte| *byte == marker)
-}
-
-fn scan_line(line: &str, out: &mut Vec<(bool, String)>) {
+fn scan_line_spans(line: &str, line_offset: usize, out: &mut Vec<WikilinkSpan>) {
     let chars: Vec<char> = line.chars().collect();
     let mut index = 0;
     while index < chars.len() {
@@ -914,13 +909,50 @@ fn scan_line(line: &str, out: &mut Vec<(bool, String)>) {
         if embed || plain {
             let content = if embed { index + 3 } else { index + 2 };
             if let Some(end) = find_close(&chars, content) {
-                out.push((embed, chars[content..end].iter().collect()));
-                index = end + 2;
+                let close = end + 2;
+                out.push(WikilinkSpan {
+                    embed,
+                    inner: chars[content..end].iter().collect(),
+                    inner_start: line_offset + byte_at(line, content),
+                    inner_end: line_offset + byte_at(line, end),
+                });
+                index = close;
                 continue;
             }
         }
         index += 1;
     }
+}
+
+fn byte_at(text: &str, char_index: usize) -> usize {
+    text.char_indices()
+        .nth(char_index)
+        .map(|(index, _)| index)
+        .unwrap_or(text.len())
+}
+
+fn opening_fence(line: &str) -> Option<(u8, usize)> {
+    let trimmed = line.trim_start();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() < 3 || (bytes[0] != b'`' && bytes[0] != b'~') {
+        return None;
+    }
+    let marker = bytes[0];
+    let len = bytes.iter().take_while(|byte| **byte == marker).count();
+    if len < 3 {
+        return None;
+    }
+    let info = trimmed[len..].trim();
+    if marker == b'`' && info.contains('`') {
+        return None;
+    }
+    Some((marker, len))
+}
+
+fn closing_fence(line: &str, marker: u8, len: usize) -> bool {
+    let trimmed = line.trim();
+    let bytes = trimmed.as_bytes();
+    bytes.len() >= len && bytes.iter().all(|byte| *byte == marker)
 }
 
 fn bracket_escaped(chars: &[char], index: usize) -> bool {
