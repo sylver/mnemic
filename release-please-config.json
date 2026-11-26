@@ -1,5 +1,10 @@
 {
-  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/v17.3.0/schemas/config.json",
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-commit-authors": true,
+  "pull-request-title-pattern": "chore(release): v${version}",
+  "pull-request-header": "Automated release",
+  "pull-request-footer": "",
+  "plugins": ["sentence-case"],
   "packages": {
     ".": {
       "release-type": "simple",
@@ -32,6 +37,9 @@
         {"type": "revert", "section": "Reverts"},
         {"type": "refactor", "section": "Refactoring"},
         {"type": "docs", "section": "Documentation"},
+        {"type": "test", "section": "Tests"},
+        {"type": "build", "section": "Build"},
+        {"type": "style", "section": "Styling"},
         {"type": "chore", "section": "Chores"},
         {"type": "ci", "section": "Continuous Integration"}
       ]
