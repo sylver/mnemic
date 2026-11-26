@@ -79,10 +79,16 @@ pub fn init_vault(request: InitRequest<'_>) -> Result<InitReport, InitError> {
     let template = request.agents_template.to_string();
     let toml_body = toml_bytes(request.actor)?;
     let folders = type_folders()?;
+    // Refuse a symlink append before the lock, which creates `.mnemic/`.
+    plan_gitignore(&target.join(".gitignore"))?;
     let step = with_write_lock(&target, DEFAULT_LOCK_TIMEOUT, |txn| {
         if let Err(err) = classify_config(&target.join("mnemic.toml")) {
             return Ok(Step::Failed(err));
         }
+        let gitignore = match plan_gitignore(&target.join(".gitignore")) {
+            Ok(plan) => plan,
+            Err(err) => return Ok(Step::Failed(err)),
+        };
         let mut created = Vec::new();
         let mut skipped = Vec::new();
         let toml_path = target.join("mnemic.toml");
@@ -100,13 +106,19 @@ pub fn init_vault(request: InitRequest<'_>) -> Result<InitReport, InitError> {
             &mut created,
             &mut skipped,
         )?;
-        ensure_gitignore(txn, &target, &mut created, &mut skipped)?;
+        apply_gitignore(
+            txn,
+            &target.join(".gitignore"),
+            gitignore,
+            &mut created,
+            &mut skipped,
+        )?;
         for folder in &folders {
             let dir = target.join(folder);
             fs::create_dir_all(&dir)?;
             let keep = dir.join(".gitkeep");
             let rel = format!("{folder}/.gitkeep");
-            if keep.exists() {
+            if path_present(&keep)? {
                 skipped.push(rel);
                 continue;
             }
@@ -216,6 +228,14 @@ fn quote_toml(value: &str) -> Result<String, InitError> {
     Ok(out)
 }
 
+fn path_present(path: &Path) -> Result<bool, CoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(err.into()),
+    }
+}
+
 fn write_if_absent(
     txn: &crate::write::WriteTxn,
     path: &Path,
@@ -224,7 +244,7 @@ fn write_if_absent(
     created: &mut Vec<String>,
     skipped: &mut Vec<String>,
 ) -> Result<(), CoreError> {
-    if path.exists() {
+    if path_present(path)? {
         skipped.push(rel.to_string());
         return Ok(());
     }
@@ -233,31 +253,62 @@ fn write_if_absent(
     Ok(())
 }
 
-fn ensure_gitignore(
+enum GitignorePlan {
+    Create,
+    Skip,
+    Append(Vec<u8>),
+}
+
+fn plan_gitignore(path: &Path) -> Result<GitignorePlan, InitError> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(GitignorePlan::Create);
+        }
+        Err(err) => return Err(io_err(err)),
+    };
+    if meta.file_type().is_symlink() {
+        return match fs::read(path) {
+            Ok(bytes) if gitignore_has_line(&bytes) => Ok(GitignorePlan::Skip),
+            _ => Err(InitError::Io(
+                "refusing to append to symlinked .gitignore".to_string(),
+            )),
+        };
+    }
+    let bytes = fs::read(path).map_err(io_err)?;
+    if gitignore_has_line(&bytes) {
+        return Ok(GitignorePlan::Skip);
+    }
+    Ok(GitignorePlan::Append(with_mnemic_line(bytes)))
+}
+
+fn apply_gitignore(
     txn: &crate::write::WriteTxn,
-    vault: &Path,
+    path: &Path,
+    plan: GitignorePlan,
     created: &mut Vec<String>,
     skipped: &mut Vec<String>,
 ) -> Result<(), CoreError> {
-    let path = vault.join(".gitignore");
-    if !path.exists() {
-        txn.atomic_write(&path, b".mnemic/\n")?;
-        created.push(".gitignore".to_string());
-        return Ok(());
+    match plan {
+        GitignorePlan::Skip => skipped.push(".gitignore".to_string()),
+        GitignorePlan::Create => {
+            txn.atomic_write(path, b".mnemic/\n")?;
+            created.push(".gitignore".to_string());
+        }
+        GitignorePlan::Append(bytes) => {
+            txn.atomic_write(path, &bytes)?;
+            created.push(".gitignore".to_string());
+        }
     }
-    let bytes = fs::read(&path)?;
-    if gitignore_has_line(&bytes) {
-        skipped.push(".gitignore".to_string());
-        return Ok(());
-    }
-    let mut next = bytes;
-    if !next.is_empty() && !next.ends_with(b"\n") {
-        next.push(b'\n');
-    }
-    next.extend_from_slice(b".mnemic/\n");
-    txn.atomic_write(&path, &next)?;
-    created.push(".gitignore".to_string());
     Ok(())
+}
+
+fn with_mnemic_line(mut bytes: Vec<u8>) -> Vec<u8> {
+    if !bytes.is_empty() && !bytes.ends_with(b"\n") {
+        bytes.push(b'\n');
+    }
+    bytes.extend_from_slice(b".mnemic/\n");
+    bytes
 }
 
 fn gitignore_has_line(bytes: &[u8]) -> bool {
