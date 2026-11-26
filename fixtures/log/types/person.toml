@@ -1,0 +1,27 @@
+schema_version = 1
+folder = "people"
+timeline = true
+
+[state]
+values = ["current", "former"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false
+
+[[field]]
+name = "email"
+type = "string"
+required = false
+
+[[field]]
+name = "phone"
+type = "string"
+required = false
+
+[[field]]
+name = "org"
+type = "string"
+required = false
+target = "org"

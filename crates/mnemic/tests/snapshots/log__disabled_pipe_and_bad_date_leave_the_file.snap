@@ -1,0 +1,13 @@
+---
+source: crates/mnemic/tests/log.rs
+expression: String::from_utf8(two.stdout).unwrap()
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "TIMELINE_HEADING_AMBIGUOUS",
+    "message": "more than one ## Timeline heading",
+    "details": {}
+  }
+}

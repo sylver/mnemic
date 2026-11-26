@@ -8,6 +8,7 @@
 | [0004](0004-templates-and-vault-overlays.md) | Body templates and whole-replace vault overlays | Accepted |
 | [0005](0005-init-scaffold.md) | Init scaffolds one directory and leaves existing files | Accepted |
 | [0006](0006-vault-index.md) | One vault index and one resolver | Accepted |
+| [0007](0007-timeline-log.md) | Timeline lines are appended under one lock | Accepted |
 
 ## Rules
 

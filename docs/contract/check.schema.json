@@ -64,7 +64,12 @@
         "UNSUPPORTED_VAULT_VERSION",
         "USAGE",
         "VAULT_NOT_FOUND",
-        "NESTED_VAULT"
+        "NESTED_VAULT",
+        "NOT_FOUND",
+        "AMBIGUOUS",
+        "TIMELINE_DISABLED",
+        "TIMELINE_HEADING_AMBIGUOUS",
+        "OUTSIDE_VAULT"
       ]
     },
     "ErrorObject": {

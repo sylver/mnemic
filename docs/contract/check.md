@@ -24,6 +24,11 @@ Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal cod
 | `LOCK_HELD` | 75 |
 | `CHECK_FAILED` | 2 |
 | `NESTED_VAULT` | 2 |
+| `NOT_FOUND` | 2 |
+| `AMBIGUOUS` | 2 |
+| `TIMELINE_DISABLED` | 2 |
+| `TIMELINE_HEADING_AMBIGUOUS` | 2 |
+| `OUTSIDE_VAULT` | 2 |
 
 `LOCK_HELD` is reserved at exit 75. `check` does not take the vault lock.
 
@@ -49,3 +54,11 @@ Unexpected I/O uses `IO` and exit 1. Every other fatal code and `CHECK_FAILED` u
 | `AMBIGUOUS` | A link matches more than one note. `error.details.candidates` lists `path`, `link`, and `matches` |
 
 The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).
+
+## `mnemic log`
+
+`mnemic log <note> <text> --json` prints one JSON document. `<note>` is a path, id, slug, or alias, resolved inside the write lock.
+
+Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noop`, `line`, and `heading_created`. `line` is the timeline item, including the `- ` marker. `noop` is true when that exact line is already on the page. `heading_created` is true when this call added `## Timeline`.
+
+`NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` means the resolved path canonicalizes outside the vault, including an outside symlink. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.

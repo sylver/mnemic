@@ -33,6 +33,8 @@ A note is a UTF-8 file whose name ends in `.md`, with these exceptions:
 - Any path component, including the file name, starts with `.`. That covers `.mnemic/` and atomic-write temps such as `.welcome.mnemic-tmp-1`.
 - The path is under `sources/raw/`. Those files are immutable raw sources. Tools read them and do not rewrite them.
 
+The note-file set is that walk. Each entry is `symlink_metadata` before `canonicalize_within`, and that check runs before `read_dir` or a file read. A directory symlink is not followed. A file symlink is in the set only when its canonical path is a regular file inside the vault. A FIFO, socket, device, or path `canonicalize_within` rejects is not a note. `check` does not report it, and the path is not opened.
+
 Notes live under a folder named by the type pack. `check` does not compare the folder name to `type`.
 
 ## Frontmatter
@@ -57,6 +59,16 @@ Unknown keys are kept and are not validated. `status` is not a per-type state fi
 ## Body
 
 Text after the closing fence is the body. A `## Timeline` section is the place for later events. `check` reads the body only for wikilinks.
+
+`mnemic log` appends one timeline item when the note's type has `timeline = true`. The line stored under the heading is a Markdown list item. The grammar is one of:
+
+- `- YYYY-MM-DD | source | summary`
+- `- YYYY-MM-DDTHH:MM:SS+01:00 | source | summary`
+- `- YYYY-MM-DD | summary`
+
+The date is an ISO calendar date or an RFC 3339 datetime with an offset. `source` may be a wikilink, a path, a URL, or a short actor name, and may be omitted when the line has a single `|`. `summary` is the rest of the line and must not contain `|`. The command accepts the same text with or without the leading `- `, and it always writes the marker.
+
+Lines are inserted in date order, newest first, after the heading and one blank line. The same calendar date keeps insertion order, newest on top. An existing line is not rewritten. The same date, source, and summary is a no-op. A type with `timeline = false` is `TIMELINE_DISABLED` and does not gain a heading. More than one `## Timeline` heading outside a code fence is `TIMELINE_HEADING_AMBIGUOUS`. A heading inside a code fence is ignored. When `timeline = true` and the heading is missing, `log` creates `## Timeline` at the end of the note. `updated` changes only when a line is written, from the clock, through `FrontmatterEdit`. A path that canonicalizes outside the vault is `OUTSIDE_VAULT`.
 
 ## Identity
 
