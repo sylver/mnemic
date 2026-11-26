@@ -1,0 +1,25 @@
+# cargo-deny policy for advisories and licenses.
+# `cargo deny check advisories licenses` is the CI gate.
+
+[advisories]
+version = 2
+yanked = "deny"
+# chrono 0.4 is RUSTSEC-2026-0543 (unmaintained, no upgrade). This change
+# cannot edit crate dependencies. Vulnerability and yanked checks stay deny.
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained and mnemic-core depends on it; no fixed version exists" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+exceptions = []

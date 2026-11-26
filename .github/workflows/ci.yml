@@ -4,22 +4,125 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
 
 jobs:
   ci:
     name: fmt, clippy, test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+      - name: Read the pinned toolchain
+        id: rust
+        run: |
+          set -euo pipefail
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ { print $2; exit }' rust-toolchain.toml)"
+          test -n "$channel"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ steps.rust.outputs.channel }}
           components: clippy, rustfmt
+      - name: Confirm the active toolchain
+        run: |
+          set -euo pipefail
+          active="$(rustup show active-toolchain)"
+          echo "$active"
+          case "$active" in
+            1.100.0*) ;;
+            *)
+              echo "expected the rust-toolchain.toml pin 1.100.0" >&2
+              exit 1
+              ;;
+          esac
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --locked
       - run: cargo test --locked -p mnemic-core --lib five_thousand_notes_median -- --nocapture
+
+  conventional-commits:
+    name: conventional commits
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Self-test the conventional commit checker
+        run: |
+          set -euo pipefail
+          ./scripts/check-conventional-commit.sh "ci: enforce conventional commit subjects"
+          ./scripts/check-conventional-commit.sh "chore(main): release 0.1.0"
+          if ./scripts/check-conventional-commit.sh "Update README"; then
+            echo "invalid title was accepted" >&2
+            exit 1
+          fi
+      - name: Check the pull request title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: ./scripts/check-conventional-commit.sh "$PR_TITLE"
+      - name: Check commit subjects pushed to main
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then
+            if git rev-parse --verify --quiet HEAD~1 >/dev/null; then
+              range="HEAD~1..HEAD"
+            else
+              range="HEAD"
+            fi
+          else
+            range="${BEFORE}..${SHA}"
+          fi
+          echo "range=${range}"
+          mapfile -t subjects < <(git log --format=%s "$range")
+          if ((${#subjects[@]} == 0)); then
+            echo "no commits in ${range}" >&2
+            exit 1
+          fi
+          ./scripts/check-conventional-commit.sh "${subjects[@]}"
+
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the pinned toolchain
+        id: rust
+        run: |
+          set -euo pipefail
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ { print $2; exit }' rust-toolchain.toml)"
+          test -n "$channel"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
+      - name: Install cargo-deny
+        run: |
+          set -euo pipefail
+          version="0.22.1"
+          archive="cargo-deny-${version}-x86_64-unknown-linux-musl.tar.gz"
+          url="https://github.com/EmbarkStudios/cargo-deny/releases/download/${version}/${archive}"
+          curl --proto '=https' --tlsv1.2 --retry 5 --retry-connrefused --location --silent --show-error --fail "$url" \
+            | tar -xz -C "$RUNNER_TEMP"
+          install "${RUNNER_TEMP}/cargo-deny-${version}-x86_64-unknown-linux-musl/cargo-deny" /usr/local/bin/cargo-deny
+          cargo deny --version
+      - name: Check advisories and licenses
+        run: cargo deny check advisories licenses

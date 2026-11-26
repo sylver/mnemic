@@ -18,6 +18,8 @@ jobs:
     name: version mismatch proof
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: A tag that disagrees with Cargo.toml fails
@@ -43,14 +45,29 @@ jobs:
           test "$code" -ne 0
           grep -F 'v0.1.0$(true)' "$RUNNER_TEMP/hostile.txt"
       - name: The workspace version passes
-        env:
-          RELEASE_TAG: v0.1.0
-        run: ./scripts/check-release-tag.sh "$RELEASE_TAG"
+        run: |
+          set -euo pipefail
+          version="$(awk '
+            $0 ~ /^\[workspace\.package\]/ { in_pkg = 1; next }
+            in_pkg && $0 ~ /^\[/ { exit }
+            in_pkg && /^version[[:space:]]*=/ {
+              line = $0
+              sub(/^version[[:space:]]*=[[:space:]]*/, "", line)
+              gsub(/"/, "", line)
+              gsub(/[[:space:]]/, "", line)
+              print line
+              exit
+            }
+          ' Cargo.toml)"
+          test -n "$version"
+          ./scripts/check-release-tag.sh "v${version}"
 
   tag-version:
     name: tag matches Cargo.toml
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Refuse a tag that disagrees with Cargo.toml
@@ -62,6 +79,8 @@ jobs:
     name: build-without-publish (${{ matrix.target }})
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -74,13 +93,32 @@ jobs:
             static: false
     steps:
       - uses: actions/checkout@v4
+      - name: Read the pinned toolchain
+        id: rust
+        run: |
+          set -euo pipefail
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ { print $2; exit }' rust-toolchain.toml)"
+          test -n "$channel"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-      # rust-toolchain.toml selects 1.100.0. The action above installs extra
-      # targets on stable, so add the target to the toolchain Cargo actually uses.
+          toolchain: ${{ steps.rust.outputs.channel }}
       - name: Add the target to the pinned toolchain
-        run: rustup target add ${{ matrix.target }}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          active="$(rustup show active-toolchain)"
+          echo "$active"
+          case "$active" in
+            1.100.0*) ;;
+            *)
+              echo "expected the rust-toolchain.toml pin 1.100.0" >&2
+              exit 1
+              ;;
+          esac
+          rustup target add "$TARGET"
+          rustup target list --installed | grep -F "$TARGET"
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -149,6 +187,8 @@ jobs:
     needs: tag-version
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && success()
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -161,13 +201,32 @@ jobs:
             static: false
     steps:
       - uses: actions/checkout@v4
+      - name: Read the pinned toolchain
+        id: rust
+        run: |
+          set -euo pipefail
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ { print $2; exit }' rust-toolchain.toml)"
+          test -n "$channel"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-      # rust-toolchain.toml selects 1.100.0. The action above installs extra
-      # targets on stable, so add the target to the toolchain Cargo actually uses.
+          toolchain: ${{ steps.rust.outputs.channel }}
       - name: Add the target to the pinned toolchain
-        run: rustup target add ${{ matrix.target }}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          active="$(rustup show active-toolchain)"
+          echo "$active"
+          case "$active" in
+            1.100.0*) ;;
+            *)
+              echo "expected the rust-toolchain.toml pin 1.100.0" >&2
+              exit 1
+              ;;
+          esac
+          rustup target add "$TARGET"
+          rustup target list --installed | grep -F "$TARGET"
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -195,8 +254,10 @@ jobs:
             cd dist
             if command -v sha256sum >/dev/null 2>&1; then
               sha256sum "$name" > "${name}.sha256"
+              sha256sum -c "${name}.sha256"
             else
               shasum -a 256 "$name" > "${name}.sha256"
+              shasum -a 256 -c "${name}.sha256"
             fi
           )
       - uses: actions/upload-artifact@v4
