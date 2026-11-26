@@ -85,7 +85,7 @@ A file `<vault>/types/<type>.md` replaces the embedded body for that type. A typ
 
 ## Vault overlays
 
-`<vault>/types/*.toml` is the only overlay. The file stem is the type name. `check` loads that directory from the vault root at the start of a run. Files there are pack files. `check` does not treat them as notes.
+`<vault>/types/*.toml` is the only overlay. The file stem is the type name, and that name is one path component. `check` loads that directory from the vault root at the start of a run. Files there are pack files. `check` does not treat them as notes. A symlink at `types/` or at a pack or template file, and a path that canonicalizes outside the vault, is `INVALID_PACK`. The finding names the vault-relative path and does not include the other file's text.
 
 A new name adds a custom type. The same name replaces the built-in declaration whole, including `folder`, `schema_version`, `state`, and `field`. There is no field-by-field merge. The overlay's `schema_version` is the version `SCHEMA_VERSION_AHEAD` uses for that type, including when it is lower than the built-in it replaced. A lower version is not `INVALID_PACK`.
 

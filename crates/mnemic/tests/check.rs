@@ -200,7 +200,11 @@ fn symlinked_overlay_file_is_invalid_pack_without_outside_text() {
     let _ = fs::remove_dir_all(&root);
     let vault = root.join("vault");
     fs::create_dir_all(vault.join("types")).expect("vault");
-    fs::write(vault.join("mnemic.toml"), "schema_version = 1\nactor = \"sylver\"\n").expect("config");
+    fs::write(
+        vault.join("mnemic.toml"),
+        "schema_version = 1\nactor = \"sylver\"\n",
+    )
+    .expect("config");
     let outside = root.join("org.toml");
     fs::write(
         &outside,
@@ -226,7 +230,11 @@ fn symlinked_types_dir_does_not_apply_an_outside_pack() {
     let outside = root.join("outside-types");
     fs::create_dir_all(vault.join("relics")).expect("vault");
     fs::create_dir_all(&outside).expect("outside");
-    fs::write(vault.join("mnemic.toml"), "schema_version = 1\nactor = \"sylver\"\n").expect("config");
+    fs::write(
+        vault.join("mnemic.toml"),
+        "schema_version = 1\nactor = \"sylver\"\n",
+    )
+    .expect("config");
     fs::write(
         outside.join("relic.toml"),
         "schema_version = 1\nfolder = \"relics\"\ntimeline = false\nfield = []\n[state]\nvalues = [\"kept\"]\n",

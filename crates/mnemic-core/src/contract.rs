@@ -177,7 +177,7 @@ fn render_markdown() -> String {
          | `UNKNOWN_TYPE` | `type` is not in the loaded pack |\n\
          | `ALIAS_CONTACT` | An `aliases` entry is an email address or a phone number |\n\
          | `SCHEMA_VERSION_AHEAD` | The note `schema_version` is newer than the loaded type |\n\
-         | `INVALID_PACK` | A type pack file is missing a required key or is not valid TOML |\n\n\
+         | `INVALID_PACK` | A type pack file is missing a required key, is not valid TOML, or is a symlink or path outside the vault |\n\n\
          The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n",
     );
     out

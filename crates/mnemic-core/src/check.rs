@@ -30,14 +30,13 @@ pub enum CheckFatal {
 }
 
 pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal> {
-    let start = canonicalize(path)?;
-    let root = canonicalize(&vault.root)?;
-    if start != root && !start.starts_with(&root) {
-        return Err(CheckFatal::Usage(format!(
-            "{} is outside the vault",
-            path.display()
-        )));
-    }
+    let (root, start) = match crate::vault::canonicalize_within(&vault.root, path) {
+        Ok(confined) => confined,
+        Err(crate::vault::ConfineError::Outside(message)) => {
+            return Err(CheckFatal::Usage(message));
+        }
+        Err(crate::vault::ConfineError::Io(message)) => return Err(CheckFatal::Io(message)),
+    };
     let mut files = Vec::new();
     if start.is_file() {
         if is_note(&root, &start) {
@@ -377,10 +376,6 @@ fn rel_path(root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-fn canonicalize(path: &Path) -> Result<PathBuf, CheckFatal> {
-    fs::canonicalize(path).map_err(|err| CheckFatal::Io(err.to_string()))
 }
 
 #[cfg(test)]

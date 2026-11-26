@@ -114,32 +114,53 @@ pub fn core_template(name: &str) -> Option<&'static str> {
 pub fn resolve_pack(vault_root: &Path) -> Result<Pack, PackError> {
     let core = core_pack()?;
     let dir = vault_root.join("types");
-    if !dir.is_dir() {
-        return Ok(core);
+    match fs::symlink_metadata(&dir) {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(core),
+        Err(_) => return Err(confined("types")),
+        Ok(meta) if meta.file_type().is_symlink() => return Err(confined("types")),
+        Ok(meta) if !meta.is_dir() => return Ok(core),
+        Ok(_) => {}
     }
-    core.overlay(load_overlay_dir(&dir)?)
+    if crate::vault::canonicalize_within(vault_root, &dir).is_err() {
+        return Err(confined("types"));
+    }
+    core.overlay(load_overlay_dir(vault_root)?)
 }
 
-pub fn load_overlay_dir(dir: &Path) -> Result<Pack, PackError> {
+pub fn load_overlay_dir(vault_root: &Path) -> Result<Pack, PackError> {
+    let dir = vault_root.join("types");
     let mut paths = Vec::new();
-    let entries = fs::read_dir(dir).map_err(|err| invalid("types", err.to_string()))?;
+    let entries = fs::read_dir(&dir).map_err(|_| confined("types"))?;
     for entry in entries {
-        let entry = entry.map_err(|err| invalid("types", err.to_string()))?;
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) == Some("toml") && path.is_file() {
-            paths.push(path);
+        let entry = entry.map_err(|_| confined("types"))?;
+        let name = entry.file_name();
+        let Some(file_name) = name.to_str() else {
+            continue;
+        };
+        let Some(type_name) = file_name.strip_suffix(".toml") else {
+            continue;
+        };
+        let rel = format!("types/{file_name}");
+        if !plain_type_name(type_name) {
+            return Err(confined(&rel));
         }
+        let path = entry.path();
+        let meta = fs::symlink_metadata(&path).map_err(|_| confined(&rel))?;
+        if meta.file_type().is_symlink() {
+            return Err(confined(&rel));
+        }
+        if !meta.is_file() {
+            continue;
+        }
+        if crate::vault::canonicalize_within(vault_root, &path).is_err() {
+            return Err(confined(&rel));
+        }
+        paths.push((type_name.to_string(), path, rel));
     }
     paths.sort();
     let mut loaded = Vec::with_capacity(paths.len());
-    for path in paths {
-        let name = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .filter(|name| !name.is_empty())
-            .ok_or_else(|| invalid("types", "overlay file name is not a type name"))?
-            .to_string();
-        let text = fs::read_to_string(&path).map_err(|err| invalid(&name, err.to_string()))?;
+    for (name, path, rel) in paths {
+        let text = fs::read_to_string(&path).map_err(|_| confined(&rel))?;
         loaded.push((name, text));
     }
     let files: Vec<(&str, &str)> = loaded
@@ -152,13 +173,39 @@ pub fn load_overlay_dir(dir: &Path) -> Result<Pack, PackError> {
 /// Body template for `new`. `<vault>/types/<type>.md` replaces the embedded template.
 /// `check` does not call this. `None` means the template is missing.
 pub fn template_body(vault_root: &Path, name: &str) -> Result<Option<String>, PackError> {
+    let rel = format!("types/{name}.md");
+    if !plain_type_name(name) {
+        return Err(confined(&rel));
+    }
     let path = vault_root.join("types").join(format!("{name}.md"));
-    if path.is_file() {
-        return fs::read_to_string(&path)
-            .map(Some)
-            .map_err(|err| invalid(name, err.to_string()));
+    match fs::symlink_metadata(&path) {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err(confined(&rel)),
+        Ok(meta) if meta.file_type().is_symlink() => return Err(confined(&rel)),
+        Ok(meta) if !meta.is_file() => {}
+        Ok(_) => {
+            if crate::vault::canonicalize_within(vault_root, &path).is_err() {
+                return Err(confined(&rel));
+            }
+            return fs::read_to_string(&path)
+                .map(Some)
+                .map_err(|_| confined(&rel));
+        }
     }
     Ok(core_template(name).map(str::to_string))
+}
+
+fn plain_type_name(name: &str) -> bool {
+    match name.chars().next() {
+        Some(first) if first != '.' => {
+            !name.contains('/') && !name.contains('\\') && !name.contains("..")
+        }
+        _ => false,
+    }
+}
+
+fn confined(rel: &str) -> PackError {
+    invalid(rel, rel)
 }
 
 pub fn load_pack<'a>(
@@ -480,10 +527,8 @@ mod tests {
 
     #[test]
     fn template_body_rejects_a_name_that_leaves_the_vault() {
-        let root = std::env::temp_dir().join(format!(
-            "mnemic-template-escape-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("mnemic-template-escape-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let vault = root.join("a/vault");
         fs::create_dir_all(vault.join("types")).expect("vault");
@@ -500,10 +545,8 @@ mod tests {
     fn template_body_rejects_a_symlinked_markdown_file() {
         use std::os::unix::fs::symlink;
 
-        let root = std::env::temp_dir().join(format!(
-            "mnemic-template-link-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("mnemic-template-link-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let vault = root.join("vault");
         fs::create_dir_all(vault.join("types")).expect("vault");
