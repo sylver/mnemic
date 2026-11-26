@@ -90,6 +90,16 @@ pub enum EnvelopeCode {
     VaultNotFound,
     #[serde(rename = "NESTED_VAULT")]
     NestedVault,
+    #[serde(rename = "NOT_FOUND")]
+    NotFound,
+    #[serde(rename = "AMBIGUOUS")]
+    Ambiguous,
+    #[serde(rename = "TIMELINE_DISABLED")]
+    TimelineDisabled,
+    #[serde(rename = "TIMELINE_HEADING_AMBIGUOUS")]
+    TimelineHeadingAmbiguous,
+    #[serde(rename = "OUTSIDE_VAULT")]
+    OutsideVault,
 }
 
 pub fn exit_code(code: EnvelopeCode) -> i32 {
@@ -101,7 +111,12 @@ pub fn exit_code(code: EnvelopeCode) -> i32 {
         | EnvelopeCode::UnsupportedVaultVersion
         | EnvelopeCode::Usage
         | EnvelopeCode::VaultNotFound
-        | EnvelopeCode::NestedVault => 2,
+        | EnvelopeCode::NestedVault
+        | EnvelopeCode::NotFound
+        | EnvelopeCode::Ambiguous
+        | EnvelopeCode::TimelineDisabled
+        | EnvelopeCode::TimelineHeadingAmbiguous
+        | EnvelopeCode::OutsideVault => 2,
     }
 }
 
@@ -190,6 +205,11 @@ fn render_markdown() -> String {
         EnvelopeCode::LockHeld,
         EnvelopeCode::CheckFailed,
         EnvelopeCode::NestedVault,
+        EnvelopeCode::NotFound,
+        EnvelopeCode::Ambiguous,
+        EnvelopeCode::TimelineDisabled,
+        EnvelopeCode::TimelineHeadingAmbiguous,
+        EnvelopeCode::OutsideVault,
     ];
     for code in codes {
         let name = serde_json::to_string(&code).unwrap_or_else(|_| "\"?\"".to_string());
@@ -216,7 +236,11 @@ fn render_markdown() -> String {
          | `BROKEN_LINK` | A wikilink, embed, typed link, or `supersedes` target does not resolve |\n\
          | `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path`, or `path` is not a regular file inside the vault |\n\
          | `AMBIGUOUS` | A link matches more than one note. `error.details.candidates` lists `path`, `link`, and `matches` |\n\n\
-         The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n",
+         The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n\n\
+         ## `mnemic log`\n\n\
+         `mnemic log <note> <text> --json` prints one JSON document. `<note>` is a path, id, slug, or alias, resolved inside the write lock.\n\n\
+         Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noop`, `line`, and `heading_created`. `line` is the timeline item, including the `- ` marker. `noop` is true when that exact line is already on the page. `heading_created` is true when this call added `## Timeline`.\n\n\
+         `NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` means the resolved path canonicalizes outside the vault, including an outside symlink. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.\n",
     );
     out
 }
@@ -239,5 +263,10 @@ mod tests {
         assert_eq!(exit_code(EnvelopeCode::Usage), 2);
         assert_eq!(exit_code(EnvelopeCode::CheckFailed), 2);
         assert_eq!(exit_code(EnvelopeCode::NestedVault), 2);
+        assert_eq!(exit_code(EnvelopeCode::NotFound), 2);
+        assert_eq!(exit_code(EnvelopeCode::Ambiguous), 2);
+        assert_eq!(exit_code(EnvelopeCode::TimelineDisabled), 2);
+        assert_eq!(exit_code(EnvelopeCode::TimelineHeadingAmbiguous), 2);
+        assert_eq!(exit_code(EnvelopeCode::OutsideVault), 2);
     }
 }

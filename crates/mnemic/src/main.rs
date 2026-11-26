@@ -3,9 +3,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use mnemic_core::{
-    exit_code, fatal_envelope, findings_envelope, init_vault, success_envelope, to_json,
+    exit_code, fatal_envelope, findings_envelope, init_vault, log_note, success_envelope, to_json,
     CheckEnvelope, CheckFatal, EnvelopeCode, InitData, InitError, InitRequest, InitSuccess,
-    VaultError,
+    LogError, LogRequest, SystemClock, VaultError,
 };
 
 #[derive(Parser)]
@@ -40,6 +40,19 @@ enum Command {
         #[arg(long = "as")]
         actor: Option<String>,
     },
+    /// Append one timeline line to a note.
+    Log {
+        /// Path, id, slug, or alias.
+        note: String,
+        /// `YYYY-MM-DD | source | summary` or `YYYY-MM-DD | summary`.
+        text: String,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -47,6 +60,81 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Check { path, json, vault } => check(path, json, vault),
         Command::Init { json, vault, actor } => init(json, vault, actor),
+        Command::Log {
+            note,
+            text,
+            json,
+            vault,
+        } => log(note, text, json, vault),
+    }
+}
+
+fn log(note: String, text: String, json: bool, vault: Option<PathBuf>) -> ExitCode {
+    let start = PathBuf::from(".");
+    let opened = mnemic_core::open_vault(&start, vault.as_deref());
+    let vault = match opened {
+        Ok(vault) => vault,
+        Err(err) => {
+            let (code, message) = fatal_from_vault(err);
+            return emit(json, fatal_envelope(code, message), exit_code(code));
+        }
+    };
+    let result = log_note(LogRequest {
+        vault: &vault.root,
+        note: &note,
+        text: &text,
+        clock: &SystemClock,
+        lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,
+    });
+    match result {
+        Ok(result) => {
+            if json {
+                match serde_json::to_string_pretty(&result.success()) {
+                    Ok(text) => println!("{text}"),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else if result.noop {
+                println!("noop {}", result.line);
+            } else if result.heading_created {
+                println!("created heading {}", result.line);
+            } else {
+                println!("{}", result.line);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            let (code, message) = fatal_from_log(err);
+            emit(json, fatal_envelope(code, message), exit_code(code))
+        }
+    }
+}
+
+fn fatal_from_log(err: LogError) -> (EnvelopeCode, String) {
+    match err {
+        LogError::Usage(message) => (EnvelopeCode::Usage, message),
+        LogError::NotFound(message) => (EnvelopeCode::NotFound, message),
+        LogError::Ambiguous { .. } => (EnvelopeCode::Ambiguous, err.to_string()),
+        LogError::TimelineDisabled(message) => (EnvelopeCode::TimelineDisabled, message),
+        LogError::TimelineHeadingAmbiguous(message) => {
+            (EnvelopeCode::TimelineHeadingAmbiguous, message)
+        }
+        LogError::OutsideVault(message) => (EnvelopeCode::OutsideVault, message),
+        LogError::LockHeld { .. } => (EnvelopeCode::LockHeld, err.to_string()),
+        LogError::Io(message) => (EnvelopeCode::Io, message),
+        LogError::Vault(message) => fatal_from_vault_message(&message),
+    }
+}
+
+fn fatal_from_vault_message(message: &str) -> (EnvelopeCode, String) {
+    if message.contains("no mnemic.toml") {
+        (EnvelopeCode::VaultNotFound, message.to_string())
+    } else if message.contains("schema_version") && message.contains("newer") {
+        (EnvelopeCode::UnsupportedVaultVersion, message.to_string())
+    } else {
+        (EnvelopeCode::BadConfig, message.to_string())
     }
 }
 
@@ -179,5 +267,10 @@ fn error_name(code: EnvelopeCode) -> &'static str {
         EnvelopeCode::Usage => "USAGE",
         EnvelopeCode::VaultNotFound => "VAULT_NOT_FOUND",
         EnvelopeCode::NestedVault => "NESTED_VAULT",
+        EnvelopeCode::NotFound => "NOT_FOUND",
+        EnvelopeCode::Ambiguous => "AMBIGUOUS",
+        EnvelopeCode::TimelineDisabled => "TIMELINE_DISABLED",
+        EnvelopeCode::TimelineHeadingAmbiguous => "TIMELINE_HEADING_AMBIGUOUS",
+        EnvelopeCode::OutsideVault => "OUTSIDE_VAULT",
     }
 }

@@ -58,6 +58,16 @@ Unknown keys are kept and are not validated. `status` is not a per-type state fi
 
 Text after the closing fence is the body. A `## Timeline` section is the place for later events. `check` reads the body only for wikilinks.
 
+`mnemic log` appends one timeline item when the note's type has `timeline = true`. The line stored under the heading is a Markdown list item. The grammar is one of:
+
+- `- YYYY-MM-DD | source | summary`
+- `- YYYY-MM-DDTHH:MM:SS+01:00 | source | summary`
+- `- YYYY-MM-DD | summary`
+
+The date is an ISO calendar date or an RFC 3339 datetime with an offset. `source` may be a wikilink, a path, a URL, or a short actor name, and may be omitted when the line has a single `|`. `summary` is the rest of the line and must not contain `|`. The command accepts the same text with or without the leading `- `, and it always writes the marker.
+
+Lines are inserted in date order, newest first, after the heading and one blank line. The same calendar date keeps insertion order, newest on top. An existing line is not rewritten. The same date, source, and summary is a no-op. A type with `timeline = false` is `TIMELINE_DISABLED` and does not gain a heading. More than one `## Timeline` heading outside a code fence is `TIMELINE_HEADING_AMBIGUOUS`. A heading inside a code fence is ignored. When `timeline = true` and the heading is missing, `log` creates `## Timeline` at the end of the note. `updated` changes only when a line is written, from the clock, through `FrontmatterEdit`. A path that canonicalizes outside the vault is `OUTSIDE_VAULT`.
+
 ## Identity
 
 A note has one `id`. Two files with the same `id` are `DUPLICATE_ID`. `aliases` is a list of strings. The same alias on two ids, compared case-insensitively after NFC normalization, is `ALIAS_NOT_UNIQUE`. An alias is not an email address or a phone number (`ALIAS_CONTACT`).
