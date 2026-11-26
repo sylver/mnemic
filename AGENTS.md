@@ -23,6 +23,10 @@ Use `with_write_lock`. Resolve the target inside it. Do not invent a write path.
 
 `FrontmatterEdit` returns bytes. It does not write files. Pass those bytes to `WriteTxn::atomic_write` inside `with_write_lock`. Do not round-trip frontmatter through a YAML serializer.
 
+## Vault paths
+
+Never read or write a vault path except through the confined walk and reader and the write primitive. Never reimplement, cache, or wrap `canonicalize_within`. `confined_vault_io_stays_behind_the_walk` rejects a new direct `std::fs::read`, `read_to_string`, `read_dir`, `File::open`, `OpenOptions::open`, `fs::canonicalize`, or `fs::metadata` outside those helpers, and the failure names the helper to call.
+
 ## Fixtures
 
 Put shared test inputs in `fixtures/`. `fixtures/.gitkeep` keeps the directory in git until the first fixture lands.
