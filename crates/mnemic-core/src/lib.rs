@@ -7,6 +7,7 @@ mod clock;
 mod contract;
 mod edit;
 mod frontmatter;
+mod init;
 mod pack;
 mod ulid;
 mod vault;
@@ -20,12 +21,16 @@ pub use contract::{
 };
 pub use edit::{EditError, FrontmatterEdit};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
+pub use init::{init_vault, InitData, InitError, InitReport, InitRequest, InitSuccess};
 pub use pack::{
     core_pack, core_template, load_overlay_dir, load_pack, resolve_pack, template_body, FieldDef,
     FieldKind, Pack, PackError, TypeDef,
 };
 pub use ulid::{is_ulid, UlidGenerator};
-pub use vault::{load_vault, open_vault, Vault, VaultError, SUPPORTED_VAULT_SCHEMA_VERSION};
+pub use vault::{
+    load_vault, open_vault, parse_vault_config, Vault, VaultConfig, VaultError,
+    SUPPORTED_VAULT_SCHEMA_VERSION,
+};
 
 #[derive(Debug, Error)]
 pub enum Error {

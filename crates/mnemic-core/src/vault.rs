@@ -13,6 +13,13 @@ pub struct Vault {
     pub actor: String,
 }
 
+/// Parsed `mnemic.toml`. `actor` is absent when the key was not written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VaultConfig {
+    pub schema_version: u32,
+    pub actor: Option<String>,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum VaultError {
     #[error("no mnemic.toml found")]
@@ -71,14 +78,26 @@ fn discover(start: &Path) -> Result<PathBuf, VaultError> {
 pub fn load_vault(root: &Path) -> Result<Vault, VaultError> {
     let path = root.join("mnemic.toml");
     let text = fs::read_to_string(&path).map_err(|err| VaultError::Io(err.to_string()))?;
+    let config = parse_vault_config(&text)?;
+    let actor = config
+        .actor
+        .ok_or_else(|| VaultError::BadConfig("missing actor".to_string()))?;
+    Ok(Vault {
+        root: root.to_path_buf(),
+        schema_version: config.schema_version,
+        actor,
+    })
+}
+
+pub fn parse_vault_config(text: &str) -> Result<VaultConfig, VaultError> {
     let value: Value =
-        toml::from_str(&text).map_err(|err| VaultError::BadConfig(err.to_string()))?;
+        toml::from_str(text).map_err(|err| VaultError::BadConfig(err.to_string()))?;
     let Some(table) = value.as_table() else {
         return Err(VaultError::BadConfig(
             "mnemic.toml is not a table".to_string(),
         ));
     };
-    let version = match table.get("schema_version") {
+    let schema_version = match table.get("schema_version") {
         None => return Err(VaultError::BadConfig("missing schema_version".to_string())),
         Some(Value::Integer(found)) if *found > i64::from(SUPPORTED_VAULT_SCHEMA_VERSION) => {
             return Err(VaultError::Unsupported {
@@ -96,17 +115,16 @@ pub fn load_vault(root: &Path) -> Result<Vault, VaultError> {
         }
     };
     let actor = match table.get("actor") {
-        Some(Value::String(actor)) if !actor.is_empty() => actor.clone(),
+        Some(Value::String(actor)) if !actor.is_empty() => Some(actor.clone()),
         Some(_) => {
             return Err(VaultError::BadConfig(
                 "actor must be a non-empty string".to_string(),
             ));
         }
-        None => return Err(VaultError::BadConfig("missing actor".to_string())),
+        None => None,
     };
-    Ok(Vault {
-        root: root.to_path_buf(),
-        schema_version: version,
+    Ok(VaultConfig {
+        schema_version,
         actor,
     })
 }

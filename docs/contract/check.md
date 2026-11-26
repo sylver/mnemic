@@ -10,7 +10,7 @@ A clean tree is `ok: true`, `data.errors` and `data.warnings` empty, `error: nul
 
 Findings (`BAD_ID`, `MISSING_FIELD`, `BAD_FRONTMATTER`, `UNKNOWN_TYPE`, `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`) use `ok: false`, `data` with those findings, and `error.code` `CHECK_FAILED`. Exit 2.
 
-Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, and `UNSUPPORTED_VAULT_VERSION` are fatal. They are never entries in `data.errors`.
+Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal. They are never entries in `data.errors`. `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`.
 
 ## Exit codes
 
@@ -23,6 +23,7 @@ Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal cod
 | `IO` | 1 |
 | `LOCK_HELD` | 75 |
 | `CHECK_FAILED` | 2 |
+| `NESTED_VAULT` | 2 |
 
 `LOCK_HELD` is reserved at exit 75. `check` does not take the vault lock.
 
