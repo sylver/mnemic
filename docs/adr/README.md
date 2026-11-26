@@ -5,6 +5,7 @@
 | [0001](0001-advisory-write-lock.md) | Advisory write lock and durable rename | Accepted |
 | [0002](0002-check-contract.md) | Check envelope and note file set | Accepted |
 | [0003](0003-type-pack-and-frontmatter-edit.md) | Embedded type pack and span-preserving edits | Accepted |
+| [0004](0004-templates-and-vault-overlays.md) | Body templates and whole-replace vault overlays | Accepted |
 
 ## Rules
 

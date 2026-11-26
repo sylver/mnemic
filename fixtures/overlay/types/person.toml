@@ -1,0 +1,11 @@
+schema_version = 1
+folder = "folks"
+timeline = false
+
+[state]
+values = ["current", "former"]
+
+[[field]]
+name = "badge"
+type = "string"
+required = true

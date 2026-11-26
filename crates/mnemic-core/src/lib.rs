@@ -20,7 +20,10 @@ pub use contract::{
 };
 pub use edit::{EditError, FrontmatterEdit};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
-pub use pack::{core_pack, load_pack, FieldDef, FieldKind, Pack, PackError, TypeDef};
+pub use pack::{
+    core_pack, core_template, load_overlay_dir, load_pack, resolve_pack, template_body, FieldDef,
+    FieldKind, Pack, PackError, TypeDef,
+};
 pub use ulid::{is_ulid, UlidGenerator};
 pub use vault::{load_vault, open_vault, Vault, VaultError, SUPPORTED_VAULT_SCHEMA_VERSION};
 

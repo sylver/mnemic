@@ -1,0 +1,11 @@
+schema_version = 1
+folder = "notes"
+timeline = false
+
+[state]
+values = ["current", "former"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false

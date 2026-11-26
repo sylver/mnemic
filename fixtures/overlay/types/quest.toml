@@ -1,0 +1,11 @@
+schema_version = 1
+folder = "quests"
+timeline = false
+
+[state]
+values = ["open", "done"]
+
+[[field]]
+name = "goal"
+type = "string"
+required = true

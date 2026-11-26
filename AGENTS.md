@@ -30,3 +30,7 @@ Put shared test inputs in `fixtures/`. `fixtures/.gitkeep` keeps the directory i
 ## Vault template
 
 A later unit fills `crates/mnemic/templates/AGENTS.md`. That path is the vault template. This file is the repo guide. They are different files.
+
+## Type templates and overlays
+
+Core body templates are compiled into `mnemic-core` beside the core pack. A vault overlays types from `<vault>/types/*.toml`. The same file stem replaces a built-in declaration whole. `<vault>/types/<type>.md` replaces that type's body template. See [the format doc](docs/format.md) and [ADR-0004](docs/adr/0004-templates-and-vault-overlays.md).

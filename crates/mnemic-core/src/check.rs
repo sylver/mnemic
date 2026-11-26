@@ -47,7 +47,7 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal
         collect_notes(&root, &start, &mut files)?;
     }
     files.sort();
-    let pack = match pack::core_pack() {
+    let pack = match pack::resolve_pack(&root) {
         Ok(pack) => pack,
         Err(err) => return Ok(vec![invalid_pack_finding(&err)]),
     };
@@ -333,6 +333,13 @@ pub fn is_note(vault_root: &Path, path: &Path) -> bool {
     if !name.ends_with(".md") || name == "README.md" || name == "AGENTS.md" {
         return false;
     }
+    if rel
+        .components()
+        .next()
+        .is_some_and(|component| component.as_os_str() == "types")
+    {
+        return false;
+    }
     if rel.components().any(|component| {
         component
             .as_os_str()
@@ -393,6 +400,7 @@ mod tests {
             Path::new("/vault/log/.welcome.mnemic-tmp-1.md")
         ));
         assert!(!is_note(root, Path::new("/vault/sources/raw/blob.md")));
+        assert!(!is_note(root, Path::new("/vault/types/person.md")));
     }
 
     #[test]

@@ -52,7 +52,7 @@ A wikilink is `[[ULID]]` or `[[ULID|label]]`. This version does not resolve link
 
 ## Type pack
 
-The core pack is compiled into the CLI. A vault cannot add or replace types. Each type is one TOML file with this shape:
+The core pack is compiled into the CLI. Each type is one TOML file with this shape:
 
 ```toml
 schema_version = 1
@@ -76,6 +76,20 @@ target = "org"
 A `source` note must have `path` or `url` (`MISSING_FIELD` when both are missing). `source` also has `sha256`, the hex digest of the raw bytes. Drift checks compare that field. It is not required for `check` to pass. A `journal` note must have `date`. An email or phone number in `aliases` is `ALIAS_CONTACT`. A `type` outside the pack is `UNKNOWN_TYPE`. A pack file that is not valid TOML, or that breaks this schema, is `INVALID_PACK`.
 
 The ten types are `person`, `org`, `place`, `project`, `idea`, `decision`, `topic`, `source`, `journal`, and `note`.
+
+## Templates
+
+Each core type has one body template compiled into the CLI, next to its TOML. The template is Markdown only. It has no placeholders and no template engine. `new` writes frontmatter itself and appends this body. `init` does not copy templates into the vault. `check` does not read the body and does not require a template.
+
+A file `<vault>/types/<type>.md` replaces the embedded body for that type. A type with neither file is a missing template. That is `MISSING_TEMPLATE` when `new` writes the type. `check` does not report it.
+
+## Vault overlays
+
+`<vault>/types/*.toml` is the only overlay. The file stem is the type name. `check` loads that directory from the vault root at the start of a run. Files there are pack files. `check` does not treat them as notes.
+
+A new name adds a custom type. The same name replaces the built-in declaration whole, including `folder`, `schema_version`, `state`, and `field`. There is no field-by-field merge. The overlay's `schema_version` is the version `SCHEMA_VERSION_AHEAD` uses for that type, including when it is lower than the built-in it replaced. A lower version is not `INVALID_PACK`.
+
+`folder` may change. Two types that claim the same folder string are `INVALID_PACK`, because a later `--fix` could not choose a folder. Malformed overlay TOML is `INVALID_PACK` and the process exits 2. There is no `[packs]` table.
 
 ## Frontmatter edits
 

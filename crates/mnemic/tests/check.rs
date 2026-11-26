@@ -139,6 +139,58 @@ fn invalid_pack_uses_the_findings_shape() {
 }
 
 #[test]
+fn overlay_vault_accepts_replaced_and_custom_types() {
+    let stdout = assert_json(&["check", "fixtures/overlay", "--json"], 0);
+    insta::assert_snapshot!(stdout);
+}
+
+#[test]
+fn overlay_required_field_comes_from_the_replacement() {
+    let stdout = assert_json(&["check", "fixtures/overlay-gap", "--json"], 2);
+    assert!(stdout.contains("\"MISSING_FIELD\""));
+    assert!(stdout.contains("missing badge"));
+    assert!(!stdout.contains("INVALID_PACK"));
+}
+
+#[test]
+fn malformed_overlay_toml_is_invalid_pack() {
+    let stdout = assert_json(&["check", "fixtures/overlay-malformed", "--json"], 2);
+    assert!(stdout.contains("\"INVALID_PACK\""));
+    assert!(stdout.contains("\"CHECK_FAILED\""));
+}
+
+#[test]
+fn folder_clash_is_invalid_pack() {
+    let stdout = assert_json(&["check", "fixtures/overlay-clash", "--json"], 2);
+    assert!(stdout.contains("\"INVALID_PACK\""));
+    assert!(stdout.contains("notes"));
+}
+
+#[test]
+fn overlay_schema_version_governs_ahead_and_is_not_invalid_pack() {
+    let ok = assert_json(
+        &[
+            "check",
+            "fixtures/overlay-low-version/people/current.md",
+            "--json",
+        ],
+        0,
+    );
+    assert!(ok.contains("\"ok\": true"));
+    let ahead = assert_json(
+        &[
+            "check",
+            "fixtures/overlay-low-version/people/ahead.md",
+            "--json",
+        ],
+        2,
+    );
+    assert!(ahead.contains("\"SCHEMA_VERSION_AHEAD\""));
+    assert!(ahead.contains("ahead of person 1"));
+    assert!(!ahead.contains("INVALID_PACK"));
+}
+
+#[test]
 fn unknown_check_flag_is_rejected() {
     let output = run(&["check", "--fix"]);
     assert_eq!(output.status.code(), Some(2));
