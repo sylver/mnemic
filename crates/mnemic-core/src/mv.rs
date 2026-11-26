@@ -343,7 +343,7 @@ fn recover_basename(
 }
 
 fn load_located(root: &Path, id: String, path: String) -> Result<Located, MoveError> {
-    let bytes = regular_file_inside(root, &path)?;
+    let bytes = read_note_bytes(root, &path)?;
     let text =
         String::from_utf8(bytes).map_err(|_| MoveError::Io(format!("{path} is not UTF-8")))?;
     let parsed = frontmatter::parse_note(&text).map_err(|err| match err {
@@ -627,7 +627,7 @@ fn rewrite_incoming(
     paths.sort();
     let mut rewritten = Vec::new();
     for path in paths {
-        let bytes = regular_file_inside(root, &path)?;
+        let bytes = read_note_bytes(root, &path)?;
         let text =
             String::from_utf8(bytes).map_err(|_| MoveError::Io(format!("{path} is not UTF-8")))?;
         let Some(next) = rewrite_note(&text, &old_slug, &old_rel, &new_slug, new_rel) else {
@@ -749,11 +749,11 @@ fn stamp(clock: &dyn Clock) -> String {
 }
 
 fn read_note(root: &Path, rel: &str) -> Result<String, MoveError> {
-    let bytes = regular_file_inside(root, rel)?;
+    let bytes = read_note_bytes(root, rel)?;
     String::from_utf8(bytes).map_err(|_| MoveError::Io(format!("{rel} is not UTF-8")))
 }
 
-fn regular_file_inside(root: &Path, rel: &str) -> Result<Vec<u8>, MoveError> {
+fn read_note_bytes(root: &Path, rel: &str) -> Result<Vec<u8>, MoveError> {
     let full = confined_file(root, rel)?;
     if !crate::check::regular_file_inside(root, &full) {
         return Err(MoveError::Io(format!(
