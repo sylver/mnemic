@@ -4,19 +4,21 @@
 //! `fs::canonicalize`, or `fs::metadata` in `mnemic-core` or `mnemic` library source fails
 //! this test. The fix is `collect_notes`, `regular_file_inside`, `canonicalize_within`,
 //! `VaultIndex::resolve_argument` (`confine_user_path`), `with_write_lock`, or
-//! `WriteTxn::atomic_write`. Do not reimplement, cache, or wrap `canonicalize_within`.
+//! `WriteTxn::atomic_write`. Each name is exempt only in its defining file.
+//! Do not reimplement, cache, or wrap `canonicalize_within`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-const SANCTIONED: &[&str] = &[
-    "atomic_write",
-    "canonicalize_within",
-    "collect_notes",
-    "confine_user_path",
-    "regular_file_inside",
-    "resolve_argument",
-    "with_write_lock",
+/// `(defining file, function)`. A same-named function in any other file is checked.
+const SANCTIONED: &[(&str, &str)] = &[
+    ("crates/mnemic-core/src/write/mod.rs", "atomic_write"),
+    ("crates/mnemic-core/src/vault.rs", "canonicalize_within"),
+    ("crates/mnemic-core/src/check.rs", "collect_notes"),
+    ("crates/mnemic-core/src/index.rs", "confine_user_path"),
+    ("crates/mnemic-core/src/check.rs", "regular_file_inside"),
+    ("crates/mnemic-core/src/index.rs", "resolve_argument"),
+    ("crates/mnemic-core/src/write/mod.rs", "with_write_lock"),
 ];
 
 /// `(file, enclosing function, call, times)`.
@@ -172,7 +174,7 @@ fn confined_vault_io_stays_behind_the_walk() {
     let mut counts: BTreeMap<(&str, &str, &str), u32> = BTreeMap::new();
     for hit in &found {
         let function = hit.function.as_deref().unwrap_or("<module>");
-        if SANCTIONED.contains(&function) {
+        if SANCTIONED.contains(&(hit.file.as_str(), function)) {
             continue;
         }
         *counts
@@ -202,6 +204,14 @@ fn confined_vault_io_stays_behind_the_walk() {
          Read a vault path through collect_notes or regular_file_inside.\n\
          Confine a user path with canonicalize_within or VaultIndex::resolve_argument.\n\
          Write through with_write_lock / WriteTxn::atomic_write.\n\
+         Sanctioned helpers are exempt only in their defining file:\n\
+         atomic_write in crates/mnemic-core/src/write/mod.rs,\n\
+         canonicalize_within in crates/mnemic-core/src/vault.rs,\n\
+         collect_notes in crates/mnemic-core/src/check.rs,\n\
+         confine_user_path in crates/mnemic-core/src/index.rs,\n\
+         regular_file_inside in crates/mnemic-core/src/check.rs,\n\
+         resolve_argument in crates/mnemic-core/src/index.rs,\n\
+         with_write_lock in crates/mnemic-core/src/write/mod.rs.\n\
          Do not reimplement, cache, or wrap canonicalize_within.\n\
          New call sites:\n{}\n\
          Closed-set entries that no longer match:\n{}\n",
