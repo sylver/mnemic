@@ -292,6 +292,139 @@ fn symlinked_gitignore_needing_append_writes_nothing() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn live_agents_symlink_is_skipped_and_target_unchanged() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().expect("temp");
+    let target = dir.path().join("agents-target");
+    let original = b"kept agents\n";
+    fs::write(&target, original).expect("agents target");
+    let link = dir.path().join("AGENTS.md");
+    symlink("agents-target", &link).expect("symlink");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read(&target).expect("target"), original);
+    assert!(link
+        .symlink_metadata()
+        .expect("meta")
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(&link).expect("link"),
+        PathBuf::from("agents-target")
+    );
+    let skipped = names(&json_value(&output), "skipped");
+    assert!(
+        skipped.iter().any(|path| path == "AGENTS.md"),
+        "{skipped:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_gitignore_with_mnemic_line_is_skipped_unchanged() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().expect("temp");
+    let target = dir.path().join("ignore-target");
+    let original = b"notes\n.mnemic/\n";
+    fs::write(&target, original).expect("gitignore target");
+    let link = dir.path().join(".gitignore");
+    symlink("ignore-target", &link).expect("symlink");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read(&target).expect("target"), original);
+    assert!(link
+        .symlink_metadata()
+        .expect("meta")
+        .file_type()
+        .is_symlink());
+    let skipped = names(&json_value(&output), "skipped");
+    assert!(
+        skipped.iter().any(|path| path == ".gitignore"),
+        "{skipped:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dangling_gitkeep_is_skipped() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().expect("temp");
+    let inbox = dir.path().join("inbox");
+    fs::create_dir(&inbox).expect("inbox");
+    let link = inbox.join(".gitkeep");
+    symlink("missing-keep", &link).expect("symlink");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(link
+        .symlink_metadata()
+        .expect("meta")
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(&link).expect("link"),
+        PathBuf::from("missing-keep")
+    );
+    assert!(!inbox.join("missing-keep").exists());
+    let skipped = names(&json_value(&output), "skipped");
+    assert!(
+        skipped.iter().any(|path| path == "inbox/.gitkeep"),
+        "{skipped:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dangling_mnemic_toml_writes_nothing() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().expect("temp");
+    let link = dir.path().join("mnemic.toml");
+    symlink("missing.toml", &link).expect("symlink");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let body = json_value(&output);
+    assert_eq!(body["ok"], false);
+    assert!(body["data"].is_null());
+    assert_eq!(body["error"]["code"], "IO");
+    assert!(!dir.path().join(".mnemic").exists());
+    assert!(!dir.path().join("AGENTS.md").exists());
+    assert!(!dir.path().join(".gitignore").exists());
+    assert!(link
+        .symlink_metadata()
+        .expect("meta")
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(&link).expect("link"),
+        PathBuf::from("missing.toml")
+    );
+}
+
 #[test]
 fn vault_flag_does_not_walk_and_does_not_init_the_cwd() {
     let dir = tempfile::tempdir().expect("temp");
