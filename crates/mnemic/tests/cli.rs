@@ -32,3 +32,14 @@ fn unknown_flag_exits_2() {
     let output = output(&["--not-a-flag"]);
     assert_eq!(output.status.code(), Some(2));
 }
+
+#[test]
+fn mcp_is_not_a_command() {
+    let output = output(&["mcp", "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 stderr");
+    assert!(
+        stderr.contains("unrecognized subcommand 'mcp'"),
+        "stderr was {stderr}"
+    );
+}
