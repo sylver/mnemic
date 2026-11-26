@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 use toml::Value;
@@ -141,100 +140,15 @@ pub(crate) fn canonicalize_within(
     vault_root: &Path,
     path: &Path,
 ) -> Result<(PathBuf, PathBuf), ConfineError> {
-    let mut cache = ConfineCache::open(vault_root)?;
-    let start = cache.canonicalize(path)?;
-    Ok((cache.root, start))
-}
-
-/// One canonical vault root, reused across many note paths.
-pub(crate) struct ConfineCache {
-    root: PathBuf,
-    dirs: HashMap<PathBuf, PathBuf>,
-}
-
-impl ConfineCache {
-    pub(crate) fn open(vault_root: &Path) -> Result<Self, ConfineError> {
-        let root = fs::canonicalize(vault_root).map_err(|err| ConfineError::Io(err.to_string()))?;
-        Ok(Self {
-            root,
-            dirs: HashMap::new(),
-        })
+    let root = fs::canonicalize(vault_root).map_err(|err| ConfineError::Io(err.to_string()))?;
+    let start = fs::canonicalize(path).map_err(|err| ConfineError::Io(err.to_string()))?;
+    if start != root && !start.starts_with(&root) {
+        return Err(ConfineError::Outside(format!(
+            "{} is outside the vault",
+            path.display()
+        )));
     }
-
-    pub(crate) fn canonicalize(&mut self, path: &Path) -> Result<PathBuf, ConfineError> {
-        if path.starts_with(&self.root) {
-            return self.walk(path.strip_prefix(&self.root).unwrap_or(Path::new("")));
-        }
-        let start = fs::canonicalize(path).map_err(|err| ConfineError::Io(err.to_string()))?;
-        if !inside(&self.root, &start) {
-            return Err(ConfineError::Outside(format!(
-                "{} is outside the vault",
-                path.display()
-            )));
-        }
-        Ok(start)
-    }
-
-    fn walk(&mut self, suffix: &Path) -> Result<PathBuf, ConfineError> {
-        let parts: Vec<Component<'_>> = suffix.components().collect();
-        let mut resolved = self.root.clone();
-        for (index, component) in parts.iter().enumerate() {
-            match component {
-                Component::CurDir => {}
-                Component::ParentDir => {
-                    if resolved == self.root {
-                        return Err(ConfineError::Outside(format!(
-                            "{} is outside the vault",
-                            suffix.display()
-                        )));
-                    }
-                    resolved.pop();
-                }
-                Component::Normal(name) => {
-                    let next = resolved.join(name);
-                    let last = index + 1 == parts.len();
-                    if !last {
-                        if let Some(cached) = self.dirs.get(&next) {
-                            resolved = cached.clone();
-                            continue;
-                        }
-                    }
-                    let meta = fs::symlink_metadata(&next)
-                        .map_err(|err| ConfineError::Io(err.to_string()))?;
-                    if meta.file_type().is_symlink() {
-                        let canon = fs::canonicalize(&next)
-                            .map_err(|err| ConfineError::Io(err.to_string()))?;
-                        if !inside(&self.root, &canon) {
-                            return Err(ConfineError::Outside(format!(
-                                "{} is outside the vault",
-                                next.display()
-                            )));
-                        }
-                        if !last {
-                            self.dirs.insert(next, canon.clone());
-                        }
-                        resolved = canon;
-                    } else {
-                        if !last {
-                            self.dirs.insert(next.clone(), next.clone());
-                        }
-                        resolved = next;
-                    }
-                }
-                _ => {
-                    return Err(ConfineError::Outside(format!(
-                        "{} is outside the vault",
-                        suffix.display()
-                    )));
-                }
-            }
-        }
-        Ok(resolved)
-    }
-}
-
-fn inside(root: &Path, path: &Path) -> bool {
-    path == root || path.starts_with(root)
+    Ok((root, start))
 }
 
 #[cfg(test)]
