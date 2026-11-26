@@ -68,6 +68,8 @@ pub enum EnvelopeCode {
     Usage,
     #[serde(rename = "VAULT_NOT_FOUND")]
     VaultNotFound,
+    #[serde(rename = "NESTED_VAULT")]
+    NestedVault,
 }
 
 pub fn exit_code(code: EnvelopeCode) -> i32 {
@@ -78,7 +80,8 @@ pub fn exit_code(code: EnvelopeCode) -> i32 {
         | EnvelopeCode::CheckFailed
         | EnvelopeCode::UnsupportedVaultVersion
         | EnvelopeCode::Usage
-        | EnvelopeCode::VaultNotFound => 2,
+        | EnvelopeCode::VaultNotFound
+        | EnvelopeCode::NestedVault => 2,
     }
 }
 
@@ -145,8 +148,9 @@ fn render_markdown() -> String {
          `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`) use \
          `ok: false`, `data` with those findings, and `error.code` `CHECK_FAILED`. Exit 2.\n\n\
          Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. \
-         `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, and `UNSUPPORTED_VAULT_VERSION` are fatal. \
-         They are never entries in `data.errors`.\n\n\
+         `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and \
+         `NESTED_VAULT` are fatal. They are never entries in `data.errors`. \
+         `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`.\n\n\
          ## Exit codes\n\n\
          | Code | Exit |\n\
          | --- | --- |\n",
@@ -159,6 +163,7 @@ fn render_markdown() -> String {
         EnvelopeCode::Io,
         EnvelopeCode::LockHeld,
         EnvelopeCode::CheckFailed,
+        EnvelopeCode::NestedVault,
     ];
     for code in codes {
         let name = serde_json::to_string(&code).unwrap_or_else(|_| "\"?\"".to_string());
@@ -200,5 +205,6 @@ mod tests {
         assert_eq!(exit_code(EnvelopeCode::UnsupportedVaultVersion), 2);
         assert_eq!(exit_code(EnvelopeCode::Usage), 2);
         assert_eq!(exit_code(EnvelopeCode::CheckFailed), 2);
+        assert_eq!(exit_code(EnvelopeCode::NestedVault), 2);
     }
 }

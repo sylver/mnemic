@@ -49,13 +49,23 @@ fn names(value: &Value, field: &str) -> Vec<String> {
 fn empty_dir_scaffolds_vault_without_copying_templates_or_git() {
     let dir = tempfile::tempdir().expect("temp dir");
     let output = run(dir.path(), &["init", "--json"]);
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let body = json_value(&output);
     assert_eq!(body["ok"], true);
     assert!(body["error"].is_null());
     let created = names(&body, "created");
-    for required in ["mnemic.toml", "AGENTS.md", ".gitignore", "inbox/.gitkeep", "people/.gitkeep"]
-    {
+    for required in [
+        "mnemic.toml",
+        "AGENTS.md",
+        ".gitignore",
+        "inbox/.gitkeep",
+        "people/.gitkeep",
+    ] {
         assert!(created.iter().any(|path| path == required), "{created:?}");
     }
     assert!(names(&body, "skipped").is_empty());
@@ -89,9 +99,17 @@ fn nonempty_dir_keeps_notes_and_appends_gitignore() {
     let note = fs::read(dir.path().join("keep.md")).expect("note");
     let raw = fs::read(dir.path().join("sources/raw/blob.md")).expect("raw");
     let output = run(dir.path(), &["init", "--json"]);
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(fs::read(dir.path().join("keep.md")).expect("note"), note);
-    assert_eq!(fs::read(dir.path().join("sources/raw/blob.md")).expect("raw"), raw);
+    assert_eq!(
+        fs::read(dir.path().join("sources/raw/blob.md")).expect("raw"),
+        raw
+    );
     let ignore = fs::read_to_string(dir.path().join(".gitignore")).expect("gitignore");
     assert!(ignore.starts_with("*.tmp\n"));
     assert!(ignore.lines().any(|line| line.trim() == ".mnemic/"));
@@ -105,12 +123,20 @@ fn nested_unsupported_and_bad_config_write_nothing() {
     let child = nested.path().join("child");
     let before = fs::read(nested.path().join("mnemic.toml")).expect("parent toml");
     let output = run(&child, &["init", "--json"]);
-    assert_eq!(output.status.code(), Some(2), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let body = json_value(&output);
     assert_eq!(body["ok"], false);
     assert_eq!(body["error"]["code"], "NESTED_VAULT");
     assert!(body["data"].is_null());
-    assert_eq!(fs::read(nested.path().join("mnemic.toml")).expect("parent"), before);
+    assert_eq!(
+        fs::read(nested.path().join("mnemic.toml")).expect("parent"),
+        before
+    );
     assert!(!child.join("AGENTS.md").exists());
     assert!(!child.join(".gitignore").exists());
 
@@ -119,7 +145,10 @@ fn nested_unsupported_and_bad_config_write_nothing() {
     let output = run(bad.path(), &["init", "--json"]);
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(json_value(&output)["error"]["code"], "BAD_CONFIG");
-    assert_eq!(fs::read(bad.path().join("mnemic.toml")).expect("bad"), bad_before);
+    assert_eq!(
+        fs::read(bad.path().join("mnemic.toml")).expect("bad"),
+        bad_before
+    );
     assert!(!bad.path().join("AGENTS.md").exists());
 
     let newer = tempfile::tempdir().expect("temp");
@@ -131,8 +160,14 @@ fn nested_unsupported_and_bad_config_write_nothing() {
     let newer_before = fs::read(newer.path().join("mnemic.toml")).expect("newer");
     let output = run(newer.path(), &["init", "--json"]);
     assert_eq!(output.status.code(), Some(2));
-    assert_eq!(json_value(&output)["error"]["code"], "UNSUPPORTED_VAULT_VERSION");
-    assert_eq!(fs::read(newer.path().join("mnemic.toml")).expect("newer"), newer_before);
+    assert_eq!(
+        json_value(&output)["error"]["code"],
+        "UNSUPPORTED_VAULT_VERSION"
+    );
+    assert_eq!(
+        fs::read(newer.path().join("mnemic.toml")).expect("newer"),
+        newer_before
+    );
     assert!(!newer.path().join("AGENTS.md").exists());
 }
 
@@ -142,8 +177,16 @@ fn existing_agents_file_is_skipped_and_left_unchanged() {
     let original = b"local agents\n";
     fs::write(dir.path().join("AGENTS.md"), original).expect("write");
     let output = run(dir.path(), &["init", "--json"]);
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
-    assert_eq!(fs::read(dir.path().join("AGENTS.md")).expect("agents"), original);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read(dir.path().join("AGENTS.md")).expect("agents"),
+        original
+    );
     let skipped = names(&json_value(&output), "skipped");
     assert!(skipped.iter().any(|path| path == "AGENTS.md"));
 }
@@ -152,7 +195,12 @@ fn existing_agents_file_is_skipped_and_left_unchanged() {
 fn second_init_does_not_rewrite_toml_or_gitignore() {
     let dir = tempfile::tempdir().expect("temp");
     let first = run(dir.path(), &["init", "--json", "--as", "sylver"]);
-    assert_eq!(first.status.code(), Some(0), "{}", String::from_utf8_lossy(&first.stderr));
+    assert_eq!(
+        first.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
     let toml_path = dir.path().join("mnemic.toml");
     let ignore_path = dir.path().join(".gitignore");
     let mut toml = fs::read_to_string(&toml_path).expect("toml");
@@ -161,7 +209,12 @@ fn second_init_does_not_rewrite_toml_or_gitignore() {
     fs::write(&toml_path, &toml).expect("edit toml");
     let ignore = fs::read(&ignore_path).expect("gitignore");
     let output = run(dir.path(), &["init", "--json", "--as", "other"]);
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(fs::read_to_string(&toml_path).expect("toml"), toml);
     assert_eq!(fs::read(&ignore_path).expect("gitignore"), ignore);
     let body = json_value(&output);
@@ -175,10 +228,18 @@ fn vault_flag_does_not_walk_and_does_not_init_the_cwd() {
     fs::create_dir(&target).expect("vault");
     fs::write(dir.path().join("note.md"), b"outside\n").expect("note");
     let output = run(dir.path(), &["init", "--json", "--vault", "vault"]);
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(!dir.path().join("mnemic.toml").exists());
     assert!(target.join("mnemic.toml").is_file());
-    assert_eq!(fs::read(dir.path().join("note.md")).expect("note"), b"outside\n");
+    assert_eq!(
+        fs::read(dir.path().join("note.md")).expect("note"),
+        b"outside\n"
+    );
     let body = json_value(&output);
     let vault = body["data"]["vault"].as_str().expect("vault");
     assert_eq!(

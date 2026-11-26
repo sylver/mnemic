@@ -3,8 +3,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use mnemic_core::{
-    exit_code, fatal_envelope, findings_envelope, success_envelope, to_json, CheckEnvelope,
-    CheckFatal, EnvelopeCode, VaultError,
+    exit_code, fatal_envelope, findings_envelope, init_vault, success_envelope, to_json,
+    CheckEnvelope, CheckFatal, EnvelopeCode, InitData, InitError, InitRequest, InitSuccess,
+    VaultError,
 };
 
 #[derive(Parser)]
@@ -27,13 +28,82 @@ enum Command {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Scaffold a vault in the target directory.
+    Init {
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Target directory. Does not walk to a parent vault.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+        /// Actor written into `mnemic.toml` when that file is created.
+        #[arg(long = "as")]
+        actor: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Check { path, json, vault } => check(path, json, vault),
+        Command::Init { json, vault, actor } => init(json, vault, actor),
     }
+}
+
+fn init(json: bool, vault: Option<PathBuf>, actor: Option<String>) -> ExitCode {
+    let target = vault.unwrap_or_else(|| PathBuf::from("."));
+    let report = init_vault(InitRequest {
+        target: &target,
+        actor: actor.as_deref(),
+        agents_template: include_str!("../templates/AGENTS.md"),
+    });
+    match report {
+        Ok(report) => emit_init(json, &report),
+        Err(err) => {
+            let (code, message) = fatal_from_init(err);
+            emit(json, fatal_envelope(code, message), exit_code(code))
+        }
+    }
+}
+
+fn fatal_from_init(err: InitError) -> (EnvelopeCode, String) {
+    match err {
+        InitError::Usage(message) => (EnvelopeCode::Usage, message),
+        InitError::Io(message) => (EnvelopeCode::Io, message),
+        InitError::LockHeld { .. } => (EnvelopeCode::LockHeld, err.to_string()),
+        InitError::NestedVault(_) => (EnvelopeCode::NestedVault, err.to_string()),
+        InitError::Unsupported { .. } => (EnvelopeCode::UnsupportedVaultVersion, err.to_string()),
+        InitError::BadConfig(message) => (EnvelopeCode::BadConfig, message),
+    }
+}
+
+fn emit_init(json: bool, report: &mnemic_core::InitReport) -> ExitCode {
+    if json {
+        let envelope = InitSuccess {
+            ok: true,
+            data: InitData {
+                vault: report.vault.display().to_string(),
+                created: report.created.clone(),
+                skipped: report.skipped.clone(),
+            },
+            error: None,
+        };
+        match serde_json::to_string_pretty(&envelope) {
+            Ok(text) => println!("{text}"),
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::from(1);
+            }
+        }
+    } else {
+        for path in &report.created {
+            println!("created {path}");
+        }
+        for path in &report.skipped {
+            println!("skipped {path}");
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 fn check(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>) -> ExitCode {
@@ -108,5 +178,6 @@ fn error_name(code: EnvelopeCode) -> &'static str {
         EnvelopeCode::UnsupportedVaultVersion => "UNSUPPORTED_VAULT_VERSION",
         EnvelopeCode::Usage => "USAGE",
         EnvelopeCode::VaultNotFound => "VAULT_NOT_FOUND",
+        EnvelopeCode::NestedVault => "NESTED_VAULT",
     }
 }

@@ -63,7 +63,8 @@
         "LOCK_HELD",
         "UNSUPPORTED_VAULT_VERSION",
         "USAGE",
-        "VAULT_NOT_FOUND"
+        "VAULT_NOT_FOUND",
+        "NESTED_VAULT"
       ]
     },
     "ErrorObject": {
