@@ -67,6 +67,8 @@ const CLOSED: &[(&str, &str, &str, u32)] = &[
         2,
     ),
     ("crates/mnemic-core/src/log.rs", "log_locked", "read", 1),
+    // Note bytes after check::regular_file_inside.
+    ("crates/mnemic-core/src/mv.rs", "read_note_bytes", "read", 1),
     (
         "crates/mnemic-core/src/pack.rs",
         "load_overlay_dir",
@@ -122,6 +124,13 @@ const CLOSED: &[(&str, &str, &str, u32)] = &[
     (
         "crates/mnemic-core/src/write/atomic.rs",
         "commit_temp",
+        "File::open",
+        1,
+    ),
+    // Directory fsync after the exclusive rename, same as commit_temp.
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "rename_exclusive",
         "File::open",
         1,
     ),

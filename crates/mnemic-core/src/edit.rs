@@ -1,3 +1,5 @@
+use unicode_normalization::UnicodeNormalization;
+
 use crate::frontmatter::{self, FrontmatterError};
 
 /// Pure frontmatter edits. Bytes in, bytes out. This type does not write files.
@@ -85,6 +87,142 @@ impl FrontmatterEdit {
         out.push_str(source);
         Ok(out)
     }
+
+    /// Append one sequence item to a top-level key.
+    ///
+    /// A missing key becomes a one-line flow sequence. A one-line value is
+    /// rewritten as a flow sequence. A block sequence gains one indented item.
+    /// The rest of the file is copied. An item already present is left as-is.
+    pub fn append_sequence_item(source: &str, key: &str, item: &str) -> Result<String, EditError> {
+        let scalar = yaml_scalar(item);
+        let note = frontmatter::parse_note(source)?;
+        let Some(span) = top_level_key(source, &note.keys, key) else {
+            return Self::insert(source, key, &format!("[{scalar}]"));
+        };
+        if sequence_contains(note.values.get(key), item) {
+            return Ok(source.to_string());
+        }
+        if !value_spans_lines(source, span.span.end) {
+            let (start, end) = value_region(source, span.span.end);
+            let current = source[start..end].trim();
+            let flow = if current.is_empty() {
+                format!("[{scalar}]")
+            } else {
+                match flow_items(current) {
+                    Some(items) => {
+                        let mut items = items;
+                        items.push(scalar);
+                        format!("[{}]", items.join(", "))
+                    }
+                    None => format!("[{current}, {scalar}]"),
+                }
+            };
+            return Self::replace(source, key, &flow);
+        }
+        let nl = newline_of(source, &note);
+        let at = block_sequence_end(source, span.span.end);
+        let indent = sequence_indent(source, span.span.end);
+        let mut out = String::with_capacity(source.len() + scalar.len() + 8);
+        out.push_str(&source[..at]);
+        if at > 0 && source.as_bytes()[at - 1] != b'\n' {
+            out.push_str(nl);
+        }
+        out.push_str(&indent);
+        out.push_str("- ");
+        out.push_str(&scalar);
+        out.push_str(nl);
+        out.push_str(&source[at..]);
+        Ok(out)
+    }
+}
+
+fn yaml_scalar(item: &str) -> String {
+    let plain = !item.is_empty()
+        && item
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_');
+    if plain {
+        item.to_string()
+    } else {
+        format!("\"{}\"", item.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+}
+
+fn sequence_contains(value: Option<&serde_json::Value>, item: &str) -> bool {
+    let wanted = fold_item(item);
+    match value {
+        Some(serde_json::Value::String(text)) => fold_item(text) == wanted,
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .any(|value| value.as_str().is_some_and(|text| fold_item(text) == wanted)),
+        _ => false,
+    }
+}
+
+fn fold_item(value: &str) -> String {
+    value.nfc().collect::<String>().to_lowercase()
+}
+
+fn flow_items(value: &str) -> Option<Vec<String>> {
+    let inner = value.strip_prefix('[')?.strip_suffix(']')?;
+    if inner.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    Some(
+        inner
+            .split(',')
+            .map(|part| part.trim().to_string())
+            .filter(|part| !part.is_empty())
+            .collect(),
+    )
+}
+
+fn block_sequence_end(source: &str, key_end: usize) -> usize {
+    let (_, line_len) = line_after(source, key_end);
+    let mut cursor = key_end + line_len;
+    if source.as_bytes().get(cursor) == Some(&b'\r') {
+        cursor += 1;
+    }
+    if source.as_bytes().get(cursor) == Some(&b'\n') {
+        cursor += 1;
+    }
+    let mut end = cursor;
+    let rest = &source[cursor..];
+    let mut offset = 0;
+    for raw in rest.split_inclusive('\n') {
+        let bare = raw.trim_end_matches(['\n', '\r']);
+        if bare == "---" || (!bare.is_empty() && !bare.starts_with([' ', '\t'])) {
+            break;
+        }
+        offset += raw.len();
+        if !bare.trim().is_empty() {
+            end = cursor + offset;
+        }
+    }
+    end
+}
+
+fn sequence_indent(source: &str, key_end: usize) -> String {
+    let (_, line_len) = line_after(source, key_end);
+    let mut cursor = key_end + line_len;
+    if source.as_bytes().get(cursor) == Some(&b'\r') {
+        cursor += 1;
+    }
+    if source.as_bytes().get(cursor) == Some(&b'\n') {
+        cursor += 1;
+    }
+    for raw in source[cursor..].split_inclusive('\n') {
+        let bare = raw.trim_end_matches(['\n', '\r']);
+        if bare == "---" || (!bare.is_empty() && !bare.starts_with([' ', '\t'])) {
+            break;
+        }
+        let trimmed = bare.trim_start();
+        if trimmed.starts_with("- ") {
+            let width = bare.len() - trimmed.len();
+            return bare[..width].to_string();
+        }
+    }
+    "  ".to_string()
 }
 
 fn one_line(key: &str, yaml: &str) -> Result<(), EditError> {
@@ -385,6 +523,21 @@ Hello\n\
             edited,
             "---\ntitle: \"Yo\"\nmeta:\n  title: \"nested\"\n---\n"
         );
+    }
+
+    #[test]
+    fn append_sequence_item_extends_a_block_and_a_flow_list() {
+        let block = "---\naliases:\n  - Ada\n---\n";
+        let edited = FrontmatterEdit::append_sequence_item(block, "aliases", "old-slug").unwrap();
+        assert_eq!(edited, "---\naliases:\n  - Ada\n  - old-slug\n---\n");
+        let again = FrontmatterEdit::append_sequence_item(&edited, "aliases", "old-slug").unwrap();
+        assert_eq!(again, edited);
+        let flow = "---\naliases: [Ada]\n---\n";
+        let edited = FrontmatterEdit::append_sequence_item(flow, "aliases", "old-slug").unwrap();
+        assert_eq!(edited, "---\naliases: [Ada, old-slug]\n---\n");
+        let missing = "---\ntitle: Ada\n---\n";
+        let edited = FrontmatterEdit::append_sequence_item(missing, "aliases", "old-slug").unwrap();
+        assert_eq!(edited, "---\ntitle: Ada\naliases: [old-slug]\n---\n");
     }
 
     fn source_key(source: &str) -> &str {

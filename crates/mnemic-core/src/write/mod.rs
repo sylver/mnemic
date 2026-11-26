@@ -37,6 +37,13 @@ impl WriteTxn {
         atomic::create_exclusive(path, bytes)
     }
 
+    /// Rename `from` onto `to` without replacing an existing name.
+    ///
+    /// Linux uses `renameat2(RENAME_NOREPLACE)`. macOS uses `renamex_np(RENAME_EXCL)`.
+    pub fn rename_exclusive(&self, from: &Path, to: &Path) -> Result<(), Error> {
+        atomic::rename_exclusive(from, to)
+    }
+
     /// Write and `fsync` the temp file, then exit the process before rename.
     ///
     /// Named crash seam for tests. Does not return.

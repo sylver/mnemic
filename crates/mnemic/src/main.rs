@@ -6,10 +6,11 @@ use std::collections::BTreeMap;
 
 use mnemic_core::{
     check_fix, create_note, exit_code, fatal_envelope, fatal_envelope_with, findings_envelope,
-    fix_envelope, init_vault, log_note, read_note, search_vault, success_envelope, to_json,
-    CheckEnvelope, CheckFatal, EnvelopeCode, FixError, FixRequest, InitData, InitError,
-    InitRequest, InitSuccess, LogError, LogRequest, NewError, NewRequest, NoteView, ReadError,
-    SearchData, SearchEnvelope, SearchError, SearchRequest, SystemClock, UlidGenerator, VaultError,
+    fix_envelope, init_vault, log_note, move_note, read_note, search_vault, success_envelope,
+    to_json, CheckEnvelope, CheckFatal, EnvelopeCode, FixError, FixRequest, InitData, InitError,
+    InitRequest, InitSuccess, LogError, LogRequest, MoveError, MoveRequest, NewError, NewRequest,
+    NoteView, ReadError, SearchData, SearchEnvelope, SearchError, SearchRequest, SystemClock,
+    UlidGenerator, VaultError,
 };
 use serde_json::{json, Value};
 
@@ -128,6 +129,22 @@ enum Command {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Move or rename a note and rewrite incoming wikilinks.
+    Mv {
+        /// Path, id, slug, or alias.
+        note: String,
+        /// Vault-relative destination file or directory.
+        dest: PathBuf,
+        /// Keep incoming wikilinks unchanged.
+        #[arg(long)]
+        no_rewrite: bool,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
 }
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -165,6 +182,104 @@ fn main() -> ExitCode {
             json,
             vault,
         } => new_note(type_name, title, id, actor, date, json, vault),
+        Command::Mv {
+            note,
+            dest,
+            no_rewrite,
+            json,
+            vault,
+        } => mv(note, dest, no_rewrite, json, vault),
+    }
+}
+
+fn mv(
+    note: String,
+    dest: PathBuf,
+    no_rewrite: bool,
+    json: bool,
+    vault: Option<PathBuf>,
+) -> ExitCode {
+    let start = PathBuf::from(".");
+    let opened = mnemic_core::open_vault(&start, vault.as_deref());
+    let vault = match opened {
+        Ok(vault) => vault,
+        Err(err) => {
+            let (code, message) = fatal_from_vault(err);
+            return emit(json, fatal_envelope(code, message), exit_code(code));
+        }
+    };
+    let dest = dest.to_string_lossy();
+    let result = move_note(MoveRequest {
+        vault: &vault.root,
+        note: &note,
+        dest: &dest,
+        rewrite: !no_rewrite,
+        clock: &SystemClock,
+        lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,
+    });
+    match result {
+        Ok(result) => {
+            if json {
+                match serde_json::to_string_pretty(&result.success()) {
+                    Ok(text) => println!("{text}"),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else {
+                println!("moved {} {}", result.from, result.to);
+                for path in &result.rewritten {
+                    println!("rewrote {path}");
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            let (code, message, details) = fatal_from_mv(err);
+            let envelope = if details.is_empty() {
+                fatal_envelope(code, message)
+            } else {
+                fatal_envelope_with(code, message, details)
+            };
+            emit(json, envelope, exit_code(code))
+        }
+    }
+}
+
+fn fatal_from_mv(err: MoveError) -> (EnvelopeCode, String, BTreeMap<String, Value>) {
+    match err {
+        MoveError::Usage(message) => (EnvelopeCode::Usage, message, BTreeMap::new()),
+        MoveError::NotFound(message) => (EnvelopeCode::NotFound, message, BTreeMap::new()),
+        MoveError::Ambiguous { candidates } => {
+            let rows: Vec<Value> = candidates
+                .iter()
+                .map(|path| json!({ "path": path }))
+                .collect();
+            let mut details = BTreeMap::new();
+            details.insert("candidates".to_string(), Value::Array(rows));
+            (
+                EnvelopeCode::Ambiguous,
+                format!("note matches more than one path: {}", candidates.join(", ")),
+                details,
+            )
+        }
+        MoveError::OutsideVault(message) => (EnvelopeCode::OutsideVault, message, BTreeMap::new()),
+        MoveError::DestExists(message) => (EnvelopeCode::DestExists, message, BTreeMap::new()),
+        MoveError::NoteArchived(message) => (EnvelopeCode::NoteArchived, message, BTreeMap::new()),
+        MoveError::AliasNotUnique(message) => {
+            (EnvelopeCode::AliasNotUnique, message, BTreeMap::new())
+        }
+        MoveError::SlugCollision(message) => {
+            (EnvelopeCode::SlugCollision, message, BTreeMap::new())
+        }
+        MoveError::RawImmutable(message) => (EnvelopeCode::RawImmutable, message, BTreeMap::new()),
+        MoveError::LockHeld { .. } => (EnvelopeCode::LockHeld, err.to_string(), BTreeMap::new()),
+        MoveError::Io(message) => (EnvelopeCode::Io, message, BTreeMap::new()),
+        MoveError::Vault(message) => {
+            let (code, message) = fatal_from_vault_message(&message);
+            (code, message, BTreeMap::new())
+        }
     }
 }
 
@@ -706,5 +821,9 @@ fn error_name(code: EnvelopeCode) -> &'static str {
         EnvelopeCode::IdExists => "ID_EXISTS",
         EnvelopeCode::SlugCollision => "SLUG_COLLISION",
         EnvelopeCode::MissingTemplate => "MISSING_TEMPLATE",
+        EnvelopeCode::DestExists => "DEST_EXISTS",
+        EnvelopeCode::NoteArchived => "NOTE_ARCHIVED",
+        EnvelopeCode::AliasNotUnique => "ALIAS_NOT_UNIQUE",
+        EnvelopeCode::RawImmutable => "RAW_IMMUTABLE",
     }
 }

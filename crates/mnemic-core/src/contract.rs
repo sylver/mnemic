@@ -130,6 +130,14 @@ pub enum EnvelopeCode {
     SlugCollision,
     #[serde(rename = "MISSING_TEMPLATE")]
     MissingTemplate,
+    #[serde(rename = "DEST_EXISTS")]
+    DestExists,
+    #[serde(rename = "NOTE_ARCHIVED")]
+    NoteArchived,
+    #[serde(rename = "ALIAS_NOT_UNIQUE")]
+    AliasNotUnique,
+    #[serde(rename = "RAW_IMMUTABLE")]
+    RawImmutable,
 }
 
 pub fn exit_code(code: EnvelopeCode) -> i32 {
@@ -151,7 +159,11 @@ pub fn exit_code(code: EnvelopeCode) -> i32 {
         | EnvelopeCode::BadId
         | EnvelopeCode::IdExists
         | EnvelopeCode::SlugCollision
-        | EnvelopeCode::MissingTemplate => 2,
+        | EnvelopeCode::MissingTemplate
+        | EnvelopeCode::DestExists
+        | EnvelopeCode::NoteArchived
+        | EnvelopeCode::AliasNotUnique
+        | EnvelopeCode::RawImmutable => 2,
     }
 }
 
@@ -243,7 +255,9 @@ fn render_markdown() -> String {
          `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug \
          or alias matches more than one note (`error.details.candidates` lists `id` and `path`), \
          and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a \
-         missing slug both use `NOT_FOUND`.\n\n\
+         missing slug both use `NOT_FOUND`. `mv` adds `DEST_EXISTS`, `NOTE_ARCHIVED`, \
+         `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE`. A path that leaves the vault \
+         is `OUTSIDE_VAULT`.\n\n\
          ## Exit codes\n\n\
          | Code | Exit |\n\
          | --- | --- |\n",
@@ -267,6 +281,10 @@ fn render_markdown() -> String {
         EnvelopeCode::IdExists,
         EnvelopeCode::SlugCollision,
         EnvelopeCode::MissingTemplate,
+        EnvelopeCode::DestExists,
+        EnvelopeCode::NoteArchived,
+        EnvelopeCode::AliasNotUnique,
+        EnvelopeCode::RawImmutable,
     ];
     for code in codes {
         let name = serde_json::to_string(&code).unwrap_or_else(|_| "\"?\"".to_string());
@@ -380,5 +398,10 @@ mod tests {
         assert_eq!(exit_code(EnvelopeCode::TimelineDisabled), 2);
         assert_eq!(exit_code(EnvelopeCode::TimelineHeadingAmbiguous), 2);
         assert_eq!(exit_code(EnvelopeCode::OutsideVault), 2);
+        assert_eq!(exit_code(EnvelopeCode::DestExists), 2);
+        assert_eq!(exit_code(EnvelopeCode::NoteArchived), 2);
+        assert_eq!(exit_code(EnvelopeCode::AliasNotUnique), 2);
+        assert_eq!(exit_code(EnvelopeCode::SlugCollision), 2);
+        assert_eq!(exit_code(EnvelopeCode::RawImmutable), 2);
     }
 }
