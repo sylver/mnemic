@@ -208,6 +208,174 @@ fn typed_link_uses_the_same_resolver() {
 }
 
 #[test]
+fn source_path_outside_the_vault_is_drift_and_is_not_hashed() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("vault");
+    fs::create_dir(&root).unwrap();
+    let outside = parent.path().join("outside.txt");
+    let bytes = b"outside-bytes";
+    fs::write(&outside, bytes).unwrap();
+    let sha = digest(bytes);
+    fs::create_dir_all(root.join("sources/raw")).unwrap();
+    fs::write(root.join("outside.txt"), bytes).unwrap();
+    write(
+        &root,
+        "sources/slash.md",
+        &note(
+            "01ARZ3NDEKTSV4RRFFQ69G5FF1",
+            "source",
+            &format!("path: 'sources/raw/..\\..\\..\\outside.txt'\nsha256: {sha}\n"),
+            "",
+        ),
+    );
+    write(
+        &root,
+        "sources/parent.md",
+        &note(
+            "01ARZ3NDEKTSV4RRFFQ69G5FF2",
+            "source",
+            &format!("path: '../outside.txt'\nsha256: {sha}\n"),
+            "",
+        ),
+    );
+    write(
+        &root,
+        "sources/abs.md",
+        &note(
+            "01ARZ3NDEKTSV4RRFFQ69G5FF3",
+            "source",
+            &format!("path: '{}'\nsha256: {sha}\n", outside.display()),
+            "",
+        ),
+    );
+    let report = mnemic_core::check_path(&vault(&root), &root).expect("check");
+    let drifted: Vec<_> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.code == mnemic_core::FindingCode::Sha256Drift)
+        .map(|finding| finding.path.clone())
+        .collect();
+    assert_eq!(
+        drifted,
+        vec![
+            "sources/abs.md".to_string(),
+            "sources/parent.md".to_string(),
+            "sources/slash.md".to_string(),
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn source_symlink_outside_the_vault_is_drift_and_is_not_hashed() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("vault");
+    fs::create_dir_all(root.join("sources/raw")).unwrap();
+    let outside = parent.path().join("outside.txt");
+    let bytes = b"outside-bytes";
+    fs::write(&outside, bytes).unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("sources/raw/leak")).unwrap();
+    write(
+        &root,
+        "sources/link.md",
+        &note(
+            "01ARZ3NDEKTSV4RRFFQ69G5FF4",
+            "source",
+            &format!("path: sources/raw/leak\nsha256: {}\n", digest(bytes)),
+            "",
+        ),
+    );
+    let report = mnemic_core::check_path(&vault(&root), &root).expect("check");
+    let drifted: Vec<_> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.code == mnemic_core::FindingCode::Sha256Drift)
+        .map(|finding| finding.path.clone())
+        .collect();
+    assert_eq!(drifted, vec!["sources/link.md".to_string()]);
+}
+
+#[test]
+fn ambiguous_link_with_spaces_keeps_the_whole_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write(
+        root,
+        "people/my sam.md",
+        &note("01ARZ3NDEKTSV4RRFFQ69G5FF5", "note", "", ""),
+    );
+    write(
+        root,
+        "orgs/my sam.md",
+        &note("01ARZ3NDEKTSV4RRFFQ69G5FF6", "note", "", ""),
+    );
+    write(
+        root,
+        "notes/link.md",
+        &note(
+            "01ARZ3NDEKTSV4RRFFQ69G5FF7",
+            "note",
+            "",
+            "See [[my sam]].\n",
+        ),
+    );
+    let report = mnemic_core::check_path(&vault(root), root).expect("check");
+    let row = report
+        .details
+        .get("candidates")
+        .and_then(|value| value.as_array())
+        .and_then(|rows| rows.first())
+        .expect("candidates");
+    assert_eq!(
+        row.get("link").and_then(|value| value.as_str()),
+        Some("my sam")
+    );
+    let matches: Vec<&str> = row
+        .get("matches")
+        .and_then(|value| value.as_array())
+        .unwrap()
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+    assert_eq!(matches, vec!["orgs/my sam.md", "people/my sam.md"]);
+}
+
+#[test]
+fn escaped_wikilink_brackets_are_not_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write(
+        root,
+        "notes/esc.md",
+        &note(
+            "01ARZ3NDEKTSV4RRFFQ69G5FF8",
+            "note",
+            "",
+            "Literal \\[[missing]] and a real \\\\[[also-missing]].\n",
+        ),
+    );
+    let report = mnemic_core::check_path(&vault(root), root).expect("check");
+    let broken: Vec<_> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.code == mnemic_core::FindingCode::BrokenLink)
+        .map(|finding| finding.message.clone())
+        .collect();
+    assert_eq!(
+        broken,
+        vec!["wikilink also-missing does not resolve".to_string()]
+    );
+}
+
+fn digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+#[test]
 fn load_reports_io_for_a_missing_root() {
     let missing = PathBuf::from("/tmp/mnemic-missing-vault-index");
     let _ = fs::remove_dir_all(&missing);
