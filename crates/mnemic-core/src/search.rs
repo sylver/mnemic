@@ -72,9 +72,13 @@ pub fn search_vault(root: &Path, request: SearchRequest<'_>) -> Result<SearchDat
         crate::check::CheckFatal::Io(message) => SearchError::Io(message),
         crate::check::CheckFatal::Usage(message) => SearchError::Usage(message),
     })?;
+    let mut confined = vault::ConfineCache::open(index.root()).map_err(|err| match err {
+        ConfineError::Io(message) => SearchError::Io(message),
+        ConfineError::Outside(message) => SearchError::Usage(message),
+    })?;
     let mut ranked = Vec::new();
     for note in index.notes() {
-        match vault::canonicalize_within(index.root(), &index.root().join(note.path)) {
+        match confined.canonicalize(&index.root().join(note.path)) {
             Ok(_) => {}
             Err(ConfineError::Outside(message)) => return Err(SearchError::Usage(message)),
             Err(ConfineError::Io(message)) => return Err(SearchError::Io(message)),
