@@ -323,7 +323,7 @@ fn fatal_from_read(err: ReadError) -> (EnvelopeCode, CheckEnvelope) {
                 ),
             )
         }
-        ReadError::Outside(message) => (
+        ReadError::OutsideVault(message) => (
             EnvelopeCode::OutsideVault,
             fatal_envelope(
                 EnvelopeCode::OutsideVault,

@@ -69,7 +69,7 @@ The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).
 
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noop`, `line`, and `heading_created`. `line` is the timeline item, including the `- ` marker. `noop` is true when that exact line is already on the page. `heading_created` is true when this call added `## Timeline`.
 
-`NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` means the resolved path canonicalizes outside the vault, including an outside symlink. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.
+`NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` is the same code `get` and `links` return: a user path argument contains `..`, is an absolute path outside the vault, or canonicalizes outside the vault, including a symlink to an outside file. `VaultIndex::resolve_argument` is that check for all three. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.
 
 ## Search
 

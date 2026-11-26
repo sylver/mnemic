@@ -78,7 +78,9 @@ A note has one `id`. Two files with the same `id` are `DUPLICATE_ID`. `aliases` 
 
 ## Resolver
 
-`VaultIndex::resolve` in `mnemic-core` is the one wikilink resolver. `check` uses it. Later verbs call the same method.
+`VaultIndex::resolve` in `mnemic-core` is the one wikilink resolver. `check` uses it.
+
+`get`, `links`, and `log` pass the user note argument through `VaultIndex::resolve_argument` first. That check refuses `..`, an absolute path outside the vault, and a path whose canonical form leaves the vault, including a symlink to an outside file, with `OUTSIDE_VAULT` and exit 2. It uses `canonicalize_within` and does not open the target. A bare id, slug, or alias skips that refusal and uses the order below.
 
 Resolution order:
 
@@ -154,4 +156,4 @@ Deleting a note removes it from the next search. Root `AGENTS.md` and `README.md
 
 ## Read verbs
 
-`mnemic get <id|slug|alias|path>` prints one note. `mnemic links <note>` prints outgoing links, backlinks, and broken links. Both call `VaultIndex::resolve` and `VaultIndex::link_sets`. They do not write files. A path that leaves the vault, including a symlink whose canonical path is outside, is `OUTSIDE_VAULT` and the file is not read. `links` exits 0 when `broken` is non-empty. `check` remains the failing validator. An ambiguous slug or alias is `AMBIGUOUS` with `error.details.candidates`. A miss is `NOT_FOUND` for an id and for a slug.
+`mnemic get <id|slug|alias|path>` prints one note. `mnemic links <note>` prints outgoing links, backlinks, and broken links. Both call `VaultIndex::resolve_argument` and `VaultIndex::link_sets`. They do not write files. A path that leaves the vault, including a symlink whose canonical path is outside, is `OUTSIDE_VAULT` and the file is not read. `log` uses the same argument check. `links` exits 0 when `broken` is non-empty. `check` remains the failing validator. An ambiguous slug or alias is `AMBIGUOUS` with `error.details.candidates`. A miss is `NOT_FOUND` for an id and for a slug.

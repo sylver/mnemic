@@ -73,7 +73,12 @@ pub enum Resolved {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolveError {
     Missing,
-    Ambiguous { candidates: Vec<String> },
+    Ambiguous {
+        candidates: Vec<String>,
+    },
+    /// A user path argument leaves the vault. Wikilink resolution does not
+    /// return this. [`VaultIndex::resolve_argument`] does.
+    Outside,
 }
 
 /// One wikilink, embed, or typed frontmatter edge.
@@ -159,6 +164,17 @@ impl VaultIndex {
             by_slug,
             by_alias,
         }
+    }
+
+    /// Resolve a user note argument from `get`, `links`, or `log`.
+    ///
+    /// `..`, an absolute path outside the vault, and a path whose canonical
+    /// form leaves the vault are [`ResolveError::Outside`]. The check is
+    /// [`crate::vault::canonicalize_within`]. It does not open the target.
+    /// A bare id, slug, or alias continues into [`VaultIndex::resolve`].
+    pub fn resolve_argument(&self, query: &str) -> Result<Resolved, ResolveError> {
+        let query = confine_user_path(&self.root, query)?;
+        self.resolve(&query)
     }
 
     /// Resolve the inside of a wikilink. A `#heading` is ignored. A `|label`
@@ -339,7 +355,7 @@ impl VaultIndex {
     fn push_link(&self, findings: &mut Vec<Finding>, path: &str, kind: &str, link: &str) {
         match self.resolve(link) {
             Ok(_) => {}
-            Err(ResolveError::Missing) => findings.push(finding(
+            Err(ResolveError::Missing | ResolveError::Outside) => findings.push(finding(
                 FindingCode::BrokenLink,
                 format!("{kind} {link} does not resolve"),
                 path.to_string(),
@@ -508,7 +524,9 @@ impl VaultIndex {
         let (target, resolved) = match self.resolve(raw) {
             Ok(Resolved::Note { id, .. }) => (Some(id), true),
             Ok(Resolved::File { .. }) => (None, true),
-            Err(ResolveError::Missing | ResolveError::Ambiguous { .. }) => (None, false),
+            Err(ResolveError::Missing | ResolveError::Ambiguous { .. } | ResolveError::Outside) => {
+                (None, false)
+            }
         };
         (
             LinkEdge {
@@ -720,6 +738,43 @@ fn link_target(link: &str) -> String {
         .map(|(target, _)| target)
         .unwrap_or(without_label);
     without_heading.trim().to_string()
+}
+
+fn confine_user_path(root: &Path, query: &str) -> Result<String, ResolveError> {
+    let trimmed = query.trim();
+    let path = Path::new(trimmed);
+    if path.is_absolute() {
+        return match crate::vault::canonicalize_within(root, path) {
+            Ok((canon_root, canon)) => Ok(rel_of(&canon_root, &canon)),
+            Err(crate::vault::ConfineError::Outside(_)) => Err(ResolveError::Outside),
+            Err(crate::vault::ConfineError::Io(_)) => {
+                let canon_root = fs::canonicalize(root).map_err(|_| ResolveError::Outside)?;
+                if path.starts_with(&canon_root) {
+                    Ok(rel_of(&canon_root, path))
+                } else {
+                    Err(ResolveError::Outside)
+                }
+            }
+        };
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(ResolveError::Outside);
+    }
+    let joined = root.join(trimmed);
+    match crate::vault::canonicalize_within(root, &joined) {
+        Err(crate::vault::ConfineError::Outside(_)) => Err(ResolveError::Outside),
+        _ => Ok(trimmed.to_string()),
+    }
+}
+
+fn rel_of(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn safe_rel(target: &str) -> Option<String> {

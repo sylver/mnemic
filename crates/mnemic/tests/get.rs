@@ -128,7 +128,11 @@ fn parent_and_absolute_paths_are_outside_vault_for_get_and_links() {
     for command in ["get", "links"] {
         for query in ["../x.md", outside] {
             let output = run(&[command, query, "--json", "--vault", &vault]);
-            assert_eq!(output.status.code(), Some(2), "{command} {query}: {output:?}");
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "{command} {query}: {output:?}"
+            );
             assert_eq!(json_of(&output)["error"]["code"], "OUTSIDE_VAULT");
         }
     }
@@ -188,6 +192,9 @@ fn get_ignores_an_outside_directory_symlink_and_resolves_the_real_note() {
 }
 
 fn mkfifo(path: &Path) {
-    let status = StdCommand::new("mkfifo").arg(path).status().expect("mkfifo");
+    let status = StdCommand::new("mkfifo")
+        .arg(path)
+        .status()
+        .expect("mkfifo");
     assert!(status.success(), "mkfifo {path:?}");
 }

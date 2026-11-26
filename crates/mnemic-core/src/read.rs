@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Component, Path};
+use std::path::Path;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -42,7 +42,7 @@ pub enum ReadError {
         candidates: Vec<Candidate>,
     },
     #[error("{0} is outside the vault")]
-    Outside(String),
+    OutsideVault(String),
     #[error("{0}")]
     Io(String),
 }
@@ -57,22 +57,21 @@ fn listed(candidates: &[Candidate]) -> String {
 
 /// Resolve `query` through [`VaultIndex`] and read that note.
 ///
-/// The query is confined with [`canonicalize_within`] when it is absolute.
-/// A query that contains `..` is [`ReadError::Outside`]. The note file is
-/// confined again before its bytes are read.
+/// User arguments enter through [`VaultIndex::resolve_argument`], which
+/// returns [`crate::index::ResolveError::Outside`] before the file is opened.
+/// The note file is confined again before its bytes are read.
 pub fn read_note(vault_root: &Path, query: &str) -> Result<NoteView, ReadError> {
     let root = fs::canonicalize(vault_root).map_err(|err| ReadError::Io(err.to_string()))?;
-    let query = prepare_query(&root, query)?;
-    if query.is_empty() {
-        return Err(ReadError::NotFound(query));
+    if query.trim().is_empty() {
+        return Err(ReadError::NotFound(query.to_string()));
     }
     let index = VaultIndex::load(&root)?;
     let pack = pack::resolve_pack(&root).map_err(|err| ReadError::Io(err.to_string()))?;
     let resolved = index
-        .resolve(&query)
-        .map_err(|err| map_resolve(&index, &query, err))?;
+        .resolve_argument(query)
+        .map_err(|err| map_resolve(&index, query, err))?;
     let crate::index::Resolved::Note { id, path } = resolved else {
-        return Err(ReadError::NotFound(query));
+        return Err(ReadError::NotFound(query.to_string()));
     };
     let text = read_confined(&root, &path)?;
     let parsed =
@@ -106,49 +105,10 @@ fn string_field(values: &std::collections::BTreeMap<String, Value>, key: &str) -
         .to_string()
 }
 
-fn prepare_query(root: &Path, query: &str) -> Result<String, ReadError> {
-    let trimmed = query.trim();
-    let path = Path::new(trimmed);
-    if path.is_absolute() {
-        return match canonicalize_within(root, path) {
-            Ok((root, canon)) => Ok(rel_string(&root, &canon)),
-            Err(ConfineError::Outside(_)) => Err(ReadError::Outside(trimmed.to_string())),
-            Err(ConfineError::Io(_)) => {
-                if absolute_inside(root, path) {
-                    Err(ReadError::NotFound(trimmed.to_string()))
-                } else {
-                    Err(ReadError::Outside(trimmed.to_string()))
-                }
-            }
-        };
-    }
-    if path
-        .components()
-        .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
-    {
-        return Err(ReadError::Outside(trimmed.to_string()));
-    }
-    Ok(trimmed.to_string())
-}
-
-fn absolute_inside(root: &Path, path: &Path) -> bool {
-    let Ok(root) = fs::canonicalize(root) else {
-        return false;
-    };
-    path.starts_with(&root)
-}
-
-fn rel_string(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
 fn read_confined(root: &Path, rel: &str) -> Result<String, ReadError> {
     let joined = root.join(rel);
     let (_root, path) = canonicalize_within(root, &joined).map_err(|err| match err {
-        ConfineError::Outside(_) => ReadError::Outside(rel.to_string()),
+        ConfineError::Outside(_) => ReadError::OutsideVault(rel.to_string()),
         ConfineError::Io(message) => ReadError::Io(message),
     })?;
     fs::read_to_string(&path).map_err(|err| ReadError::Io(err.to_string()))
@@ -157,6 +117,7 @@ fn read_confined(root: &Path, rel: &str) -> Result<String, ReadError> {
 fn map_resolve(index: &VaultIndex, query: &str, err: crate::index::ResolveError) -> ReadError {
     match err {
         crate::index::ResolveError::Missing => ReadError::NotFound(query.to_string()),
+        crate::index::ResolveError::Outside => ReadError::OutsideVault(query.to_string()),
         crate::index::ResolveError::Ambiguous { candidates } => {
             let mut rows: Vec<Candidate> = candidates
                 .into_iter()

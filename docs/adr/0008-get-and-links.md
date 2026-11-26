@@ -14,7 +14,7 @@ Agents need one read path for a note and its links. A second scanner would drift
 
 ## Decision
 
-`mnemic get` and `mnemic links` resolve through `VaultIndex::resolve` and classify edges with `VaultIndex::link_sets`, which calls that same resolver. An edge kind is `wikilink`, `embed`, or `frontmatter:<field>`. `links` lists unresolved edges and exits 0. `check` is still the command that fails. A query containing `..`, an absolute path outside the vault, or a note whose canonical path leaves the vault is `OUTSIDE_VAULT`. The note bytes are read only after `canonicalize_within` accepts the path.
+`mnemic get` and `mnemic links` resolve a user argument through `VaultIndex::resolve_argument` and classify edges with `VaultIndex::link_sets`. `log` uses that same argument check. An edge kind is `wikilink`, `embed`, or `frontmatter:<field>`. `links` lists unresolved edges and exits 0. `check` is still the command that fails, and it keeps calling `VaultIndex::resolve`. A query containing `..`, an absolute path outside the vault, or a path whose canonical form leaves the vault is `OUTSIDE_VAULT`. The check is `canonicalize_within` and does not open the target. The note bytes are read only after that check accepts the path. The vault walk stays `collect_notes`.
 
 ## Consequences
 
