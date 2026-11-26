@@ -8,21 +8,51 @@ Supported platforms are macOS and Linux.
 
 ## Install
 
-A release binary is not published yet. Install from a clone with Cargo.
+A person pushes the release tag. Automation in this repository builds and uploads binaries after that push. It does not create the tag.
 
-You need a Rust toolchain that provides `cargo`. From the repository root:
+### Cargo, from Git
+
+You need a Rust toolchain that provides `cargo`.
 
 ```bash
-cargo install --path crates/mnemic
+cargo install --git https://github.com/sylver/mnemic mnemic --locked
 ```
 
-That puts `mnemic` on your `PATH`. To build without installing:
+That builds the `mnemic` package in `crates/mnemic` and puts `mnemic` on your `PATH`.
+
+From a clone of this repository, the same package installs with:
+
+```bash
+cargo install --path crates/mnemic --locked
+```
+
+To build without installing:
 
 ```bash
 cargo build --release
 ```
 
 The binary is `target/release/mnemic`. The checks below use `mnemic` on `PATH`.
+
+### GitHub release binary
+
+The tag is `v` plus the workspace `version` in `Cargo.toml` (today `v0.1.0`). After a person pushes that tag, the release has two binaries and a SHA-256 file next to each one:
+
+- `mnemic-aarch64-apple-darwin` (macOS arm64)
+- `mnemic-x86_64-unknown-linux-musl` (Linux x86_64, static musl)
+
+Linux:
+
+```bash
+ver=0.1.0
+asset=mnemic-x86_64-unknown-linux-musl
+curl -fsSL -O "https://github.com/sylver/mnemic/releases/download/v${ver}/${asset}"
+curl -fsSL -O "https://github.com/sylver/mnemic/releases/download/v${ver}/${asset}.sha256"
+sha256sum -c "${asset}.sha256"
+install -m 755 "$asset" "$HOME/.local/bin/mnemic"
+```
+
+macOS arm64 uses `asset=mnemic-aarch64-apple-darwin` and `shasum -a 256 -c "${asset}.sha256"` instead of `sha256sum`. `mnemic --version` prints the same version as `Cargo.toml`.
 
 ## Check the fixtures
 
