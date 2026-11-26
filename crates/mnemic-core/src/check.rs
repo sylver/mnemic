@@ -265,10 +265,11 @@ fn is_email(value: &str) -> bool {
     };
     !local.is_empty()
         && !domain.is_empty()
-        && domain.contains('.')
+        && !local.contains(char::is_whitespace)
+        && !domain.contains(char::is_whitespace)
         && !domain.starts_with('.')
         && !domain.ends_with('.')
-        && !value.split('@').nth(2).is_some()
+        && value.split('@').nth(2).is_none()
 }
 
 fn is_phone(value: &str) -> bool {
@@ -285,7 +286,14 @@ fn is_phone(value: &str) -> bool {
         return false;
     }
     let digits = value.chars().filter(|ch| ch.is_ascii_digit()).count();
-    (7..=15).contains(&digits)
+    if !(7..=15).contains(&digits) {
+        return false;
+    }
+    let separators: Vec<char> = value
+        .chars()
+        .filter(|ch| !ch.is_ascii_digit() && *ch != '+')
+        .collect();
+    value.starts_with('+') || separators.iter().any(|ch| *ch != '.')
 }
 
 pub fn invalid_pack_finding(err: &PackError) -> Finding {
@@ -385,5 +393,19 @@ mod tests {
             Path::new("/vault/log/.welcome.mnemic-tmp-1.md")
         ));
         assert!(!is_note(root, Path::new("/vault/sources/raw/blob.md")));
+    }
+
+    #[test]
+    fn phone_shape_rejects_dotted_numbers_and_email_allows_localhost() {
+        assert!(!is_phone("192.168.0.1"));
+        assert!(!is_phone("2026.11.25"));
+        assert!(!is_phone("order 1234567"));
+        assert!(is_phone("+1 415 555 0134"));
+        assert!(is_phone("415-555-0134"));
+        assert!(is_email("user@localhost"));
+        assert!(is_email("ada@example.com"));
+        assert!(!is_email("not-an-email@"));
+        assert!(!is_email("mention @sylver"));
+        assert!(!is_email("order 1234567"));
     }
 }
