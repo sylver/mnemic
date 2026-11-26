@@ -8,7 +8,7 @@ Supported platforms are macOS and Linux.
 
 ## Install
 
-A person pushes the release tag. Automation in this repository builds and uploads binaries after that push. It does not create the tag.
+Releases are cut by [release-please](https://github.com/googleapis/release-please). Merging a conventional-commit pull request to `main` opens or updates a Release pull request. That pull request bumps `[workspace.package].version` in `Cargo.toml`, updates `Cargo.lock`, and writes `CHANGELOG.md`. Merging the Release pull request on GitHub creates the `vX.Y.Z` tag, the GitHub Release (with the changelog), and the macOS arm64 and Linux musl binaries. A manual `git tag` is not required. Pushing a `v*` tag by hand still publishes binaries when the tag matches `Cargo.toml`. This repository does not publish to crates.io.
 
 ### Cargo, from Git
 
@@ -36,7 +36,7 @@ The binary is `target/release/mnemic`. The checks below use `mnemic` on `PATH`.
 
 ### GitHub release binary
 
-The tag is `v` plus the workspace `version` in `Cargo.toml` (today `v0.1.0`). After a person pushes that tag, the release has two binaries and a SHA-256 file next to each one:
+The tag is `v` plus the workspace `version` in `Cargo.toml` (today `v0.1.0`). After the Release pull request merges, or after a person pushes that tag, the release has two binaries and a SHA-256 file next to each one:
 
 - `mnemic-aarch64-apple-darwin` (macOS arm64)
 - `mnemic-x86_64-unknown-linux-musl` (Linux x86_64, static musl)
