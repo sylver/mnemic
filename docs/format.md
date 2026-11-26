@@ -141,3 +141,13 @@ A new name adds a custom type. The same name replaces the built-in declaration w
 ## Frontmatter edits
 
 `FrontmatterEdit` in `mnemic-core` inserts a top-level key, replaces a top-level key's scalar, or prepends a block with `create_block`. Insert and replace match column-0 keys of the root mapping. A nested key of the same name is left alone. Replace refuses a value that spans lines (a `|` or `>` block scalar, an indented continuation, or a flow or block collection) with `MultilineValue` and does not rewrite that block. It copies every byte it was not asked to change, including comments, key order, quoting, and the body. A `#` inside a quoted scalar is part of the value. A trailing comment outside quotes stays. `create_block` writes `---\n<keys>\n---\n` in front of a file that has no frontmatter and leaves the rest of the file untouched. The value text is the caller's YAML scalar. The editor does not invent quotes. It does not write files. A later verb passes the bytes to `WriteTxn::atomic_write`. A brand-new file may be written as a fresh block without this editor.
+
+## Search
+
+`mnemic search` scans the parsed note-file set from `VaultIndex`. It does not build an index, and it has no `MATCH` expression. The query is whitespace-separated tokens. Every token must match. Case folding is Unicode lowercase. Diacritics stay distinct. `-`, `"`, and `:` are characters in a token.
+
+The scanned text is `title`, `aliases`, and the body, including a `## Timeline` section. Other frontmatter is not scanned. `--tag` reads the `tags` list only. A tag matches when it equals the flag or continues it with `/`, so `work` matches `work/x` and does not match `workspace`. Inline `#tag` is ignored. `--type` is the exact `type` string. `--since` compares `updated` and includes that ISO date or datetime. A date starts at midnight UTC.
+
+Hits with a token in the title come first, then hits with more token occurrences, then a later `updated`, then `id`. `score` is that position starting at 1. The default limit is 20. `section` is `truth` before `## Timeline` and `timeline` from that heading on. `snippet` is the first matching title, alias, or line, at most 200 characters.
+
+Deleting a note removes it from the next search. Root `AGENTS.md` and `README.md` are not notes, so a phrase that exists only there is not a hit. A note path that canonicalizes outside the vault is `USAGE` and is not read. The command does not take `--visibility`.

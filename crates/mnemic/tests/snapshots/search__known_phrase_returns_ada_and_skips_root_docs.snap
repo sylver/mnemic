@@ -1,0 +1,22 @@
+---
+source: crates/mnemic/tests/search.rs
+expression: "serde_json::to_string_pretty(&value).unwrap()"
+---
+{
+  "data": {
+    "hits": [
+      {
+        "id": "01ARZ3NDEKTSV4RRFFQ69G5FB1",
+        "path": "people/ada.md",
+        "score": 1,
+        "section": "truth",
+        "snippet": "She keeps a phosphor-lantern: west of the gate.",
+        "title": "Ada",
+        "type": "person"
+      }
+    ],
+    "query": "phosphor-lantern: west"
+  },
+  "error": null,
+  "ok": true
+}

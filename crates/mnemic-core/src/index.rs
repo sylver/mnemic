@@ -35,11 +35,29 @@ struct NoteRec {
     aliases: Vec<String>,
     status: String,
     type_name: String,
+    title: String,
+    tags: Vec<String>,
+    updated: String,
+    body: String,
     supersedes: Vec<String>,
     wikilinks: Vec<(bool, String)>,
     typed: Vec<(String, String)>,
     source_path: Option<String>,
     sha256: Option<String>,
+}
+
+/// One parsed note from [`VaultIndex`]. Search reads these fields.
+/// It does not walk the vault again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndexedNote<'a> {
+    pub id: &'a str,
+    pub path: &'a str,
+    pub type_name: &'a str,
+    pub title: &'a str,
+    pub aliases: &'a [String],
+    pub tags: &'a [String],
+    pub updated: &'a str,
+    pub body: &'a str,
 }
 
 /// A resolved wikilink or typed frontmatter link.
@@ -84,6 +102,24 @@ impl VaultIndex {
             }
         }
         Ok(Self::from_notes(root, notes))
+    }
+
+    /// Parsed notes in vault-relative path order.
+    pub fn notes(&self) -> impl Iterator<Item = IndexedNote<'_>> {
+        self.notes.iter().map(|note| IndexedNote {
+            id: &note.id,
+            path: &note.path,
+            type_name: &note.type_name,
+            title: &note.title,
+            aliases: &note.aliases,
+            tags: &note.tags,
+            updated: &note.updated,
+            body: &note.body,
+        })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     fn from_notes(root: PathBuf, notes: Vec<NoteRec>) -> Self {
@@ -443,12 +479,28 @@ fn note_rec(root: &Path, file: &Path, parsed: &ParsedNote) -> Option<NoteRec> {
         .get("sha256")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let title = parsed
+        .values
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let updated = parsed
+        .values
+        .get("updated")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     Some(NoteRec {
         id: id.to_string(),
         path: rel_path(root, file),
         aliases: string_list(parsed.values.get("aliases")),
         status,
         type_name,
+        title,
+        tags: string_list(parsed.values.get("tags")),
+        updated,
+        body: parsed.body.clone(),
         supersedes: string_list(parsed.values.get("supersedes")),
         wikilinks: wikilink_targets(&parsed.body),
         typed: typed_pairs(parsed),
