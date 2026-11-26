@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Fail before a release build or publish when a tag's version disagrees with
-# the workspace package version. The tag may be `v0.1.0` or `refs/tags/v0.1.0`.
-# The compared value is the tag with one leading `v` removed.
+# Fail before a release build or publish unless the tag is exactly `v` plus
+# the workspace package version, and that version is a semver. Extra
+# characters, a refs/tags/ prefix, and any other tag are refused.
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
@@ -10,12 +10,6 @@ if [[ $# -ne 1 ]]; then
 fi
 
 tag="$1"
-tag="${tag#refs/tags/}"
-if [[ "$tag" != v* ]]; then
-  echo "refusing release: tag '${tag}' must start with v" >&2
-  exit 1
-fi
-stripped="${tag#v}"
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 version="$(
@@ -38,8 +32,15 @@ if [[ -z "$version" ]]; then
   exit 1
 fi
 
-if [[ "$stripped" != "$version" ]]; then
-  echo "refusing release: tag ${tag} (version ${stripped}) does not match Cargo.toml version ${version}" >&2
+semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+if [[ ! "$version" =~ $semver ]]; then
+  echo "refusing release: Cargo.toml version ${version} is not a semver" >&2
+  exit 1
+fi
+
+expected="v${version}"
+if [[ "$tag" != "$expected" ]]; then
+  echo "refusing release: tag ${tag} does not match Cargo.toml version ${version}" >&2
   exit 1
 fi
 
