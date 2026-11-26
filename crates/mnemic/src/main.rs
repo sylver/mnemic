@@ -870,3 +870,61 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod readme_contract {
+    use super::Cli;
+    use clap::CommandFactory;
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
+
+    fn clap_verbs() -> BTreeSet<String> {
+        Cli::command()
+            .get_subcommands()
+            .map(|command| command.get_name().to_string())
+            .collect()
+    }
+
+    fn readme_verbs() -> BTreeSet<String> {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../README.md");
+        let readme = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!("read {}: {err}", path.display());
+        });
+        let mut in_section = false;
+        let mut names = BTreeSet::new();
+        for line in readme.lines() {
+            if line.starts_with("## Commands") {
+                in_section = true;
+                continue;
+            }
+            if in_section && line.starts_with("## ") {
+                break;
+            }
+            if !in_section {
+                continue;
+            }
+            let rest = line.trim().strip_prefix("- `").unwrap_or("");
+            let name = rest.split('`').next().unwrap_or("");
+            if !name.is_empty() && !name.contains(char::is_whitespace) {
+                names.insert(name.to_string());
+            }
+        }
+        names
+    }
+
+    #[test]
+    fn readme_command_list_matches_clap() {
+        let from_readme = readme_verbs();
+        let from_clap = clap_verbs();
+        assert_eq!(
+            from_readme, from_clap,
+            "README ## Commands bullets must be exactly the clap subcommands"
+        );
+        for absent in ["index", "migrate", "mcp"] {
+            assert!(
+                !from_clap.contains(absent),
+                "{absent} must not be a shipped command"
+            );
+        }
+    }
+}
