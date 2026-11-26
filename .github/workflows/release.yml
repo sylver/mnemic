@@ -7,6 +7,12 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to rebuild and republish assets for (leave empty to run release-please)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -14,7 +20,9 @@ permissions:
 jobs:
   release-please:
     name: release-please
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.tag == '')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -32,7 +40,8 @@ jobs:
     if: |
       always() && !cancelled() && !failure() && (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-        needs.release-please.outputs.release_created == 'true'
+        needs.release-please.outputs.release_created == 'true' ||
+        (github.event_name == 'workflow_dispatch' && inputs.tag != '')
       )
     runs-on: ubuntu-latest
     permissions:
@@ -40,10 +49,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.tag_name || github.ref }}
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name || github.ref_name }}
       - name: Refuse a tag that disagrees with Cargo.toml
         env:
-          RELEASE_TAG: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.tag_name || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name || github.ref_name }}
         run: ./scripts/check-release-tag.sh "$RELEASE_TAG"
 
   release-build:
@@ -52,7 +61,8 @@ jobs:
     if: |
       always() && !cancelled() && needs.tag-version.result == 'success' && (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-        needs.release-please.outputs.release_created == 'true'
+        needs.release-please.outputs.release_created == 'true' ||
+        (github.event_name == 'workflow_dispatch' && inputs.tag != '')
       )
     runs-on: ${{ matrix.os }}
     permissions:
@@ -70,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.tag_name || github.ref }}
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name || github.ref_name }}
       - name: Read the pinned toolchain
         id: rust
         run: |
@@ -171,7 +181,8 @@ jobs:
     if: |
       always() && !cancelled() && needs.release-build.result == 'success' && (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-        needs.release-please.outputs.release_created == 'true'
+        needs.release-please.outputs.release_created == 'true' ||
+        (github.event_name == 'workflow_dispatch' && inputs.tag != '')
       )
     runs-on: ubuntu-latest
     permissions:
@@ -184,7 +195,8 @@ jobs:
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.tag_name || github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
           find dist -type f -print
