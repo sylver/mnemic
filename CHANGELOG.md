@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/sylver/mnemic/compare/v0.1.0...v0.1.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **ci:** Fix release publish GH_REPO and add tag republish dispatch ([#27](https://github.com/sylver/mnemic/issues/27)) ([a0f6bcb](https://github.com/sylver/mnemic/commit/a0f6bcbeb3a98622b7a9faf959082f1a8dae1129))
+
 ## 0.1.0 (2026-11-26)
 
 
