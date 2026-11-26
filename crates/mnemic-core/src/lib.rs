@@ -7,13 +7,14 @@ mod clock;
 mod contract;
 mod edit;
 mod frontmatter;
+mod index;
 mod init;
 mod pack;
 mod ulid;
 mod vault;
 pub mod write;
 
-pub use check::{check_path, invalid_pack_finding, is_note, CheckFatal};
+pub use check::{check_path, invalid_pack_finding, is_note, CheckFatal, CheckReport};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use contract::{
     exit_code, fatal_envelope, findings_envelope, render_contract, success_envelope, to_json,
@@ -21,6 +22,7 @@ pub use contract::{
 };
 pub use edit::{EditError, FrontmatterEdit};
 pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNote};
+pub use index::{index_vault, ResolveError, Resolved, VaultIndex};
 pub use init::{init_vault, InitData, InitError, InitReport, InitRequest, InitSuccess};
 pub use pack::{
     core_pack, core_template, load_overlay_dir, load_pack, resolve_pack, template_body, FieldDef,

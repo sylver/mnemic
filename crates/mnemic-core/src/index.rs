@@ -1,0 +1,751 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use unicode_normalization::UnicodeNormalization;
+
+use crate::check::{collect_notes, rel_path, CheckFatal};
+use crate::contract::{Finding, FindingCode};
+use crate::frontmatter::{self, ParsedNote};
+use crate::pack::Pack;
+
+/// One vault-wide id, path, slug, and alias map.
+///
+/// [`VaultIndex::resolve`] is the resolver `check` uses. Later verbs call the
+/// same method. Resolution order is vault-relative path (with or without
+/// `.md`), then exact `id`, then filename slug, then alias. Slug and alias
+/// matches are case-insensitive after NFC normalization. Two or more slug or
+/// alias hits are [`ResolveError::Ambiguous`]. A link does not guess.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VaultIndex {
+    root: PathBuf,
+    notes: Vec<NoteRec>,
+    by_id: BTreeMap<String, Vec<usize>>,
+    by_path: BTreeMap<String, Vec<usize>>,
+    by_slug: BTreeMap<String, Vec<usize>>,
+    by_alias: BTreeMap<String, Vec<usize>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NoteRec {
+    id: String,
+    path: String,
+    aliases: Vec<String>,
+    status: String,
+    type_name: String,
+    supersedes: Vec<String>,
+    wikilinks: Vec<(bool, String)>,
+    typed: Vec<(String, String)>,
+    source_path: Option<String>,
+    sha256: Option<String>,
+}
+
+/// A resolved wikilink or typed frontmatter link.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Resolved {
+    Note { id: String, path: String },
+    File { path: String },
+}
+
+/// Why [`VaultIndex::resolve`] did not return one target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolveError {
+    Missing,
+    Ambiguous { candidates: Vec<String> },
+}
+
+/// Load every note under `root`. `root` is the vault directory.
+pub fn index_vault(root: &Path) -> Result<VaultIndex, CheckFatal> {
+    VaultIndex::load(root)
+}
+
+impl VaultIndex {
+    pub fn load(root: &Path) -> Result<Self, CheckFatal> {
+        let root = fs::canonicalize(root).map_err(|err| CheckFatal::Io(err.to_string()))?;
+        let mut files = Vec::new();
+        collect_notes(&root, &root, &mut files)?;
+        files.sort();
+        let mut notes = Vec::new();
+        for file in files {
+            let text = fs::read(&file).map_err(|err| CheckFatal::Io(err.to_string()))?;
+            let Ok(source) = String::from_utf8(text) else {
+                continue;
+            };
+            let Ok(parsed) = frontmatter::parse_note(&source) else {
+                continue;
+            };
+            if let Some(note) = note_rec(&root, &file, &parsed) {
+                notes.push(note);
+            }
+        }
+        Ok(Self::from_notes(root, notes))
+    }
+
+    fn from_notes(root: PathBuf, notes: Vec<NoteRec>) -> Self {
+        let mut by_id: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut by_path: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut by_slug: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut by_alias: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (index, note) in notes.iter().enumerate() {
+            by_id.entry(note.id.clone()).or_default().push(index);
+            by_path.entry(nfc(&note.path)).or_default().push(index);
+            let slug = Path::new(&note.path)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("");
+            by_slug.entry(fold_key(slug)).or_default().push(index);
+            let mut seen = BTreeSet::new();
+            for alias in &note.aliases {
+                let key = fold_key(alias);
+                if seen.insert(key.clone()) {
+                    by_alias.entry(key).or_default().push(index);
+                }
+            }
+        }
+        Self {
+            root,
+            notes,
+            by_id,
+            by_path,
+            by_slug,
+            by_alias,
+        }
+    }
+
+    /// Resolve the inside of a wikilink. A `#heading` is ignored. A `|label`
+    /// is ignored. `![[...]]` callers pass the inside without the embed mark.
+    pub fn resolve(&self, link: &str) -> Result<Resolved, ResolveError> {
+        let target = link_target(link);
+        if target.is_empty() {
+            return Err(ResolveError::Missing);
+        }
+        if let Some(found) = self.resolve_path(&target) {
+            return found;
+        }
+        if let Some(idxs) = self.by_id.get(&target) {
+            return self.one_note(idxs);
+        }
+        let folded = fold_key(&target);
+        if let Some(idxs) = self.by_slug.get(&folded) {
+            return self.one_note(idxs);
+        }
+        if let Some(idxs) = self.by_alias.get(&folded) {
+            return self.one_note(idxs);
+        }
+        Err(ResolveError::Missing)
+    }
+
+    fn resolve_path(&self, target: &str) -> Option<Result<Resolved, ResolveError>> {
+        let rel = safe_rel(target)?;
+        let key = nfc(&rel);
+        if let Some(idxs) = self.by_path.get(&key) {
+            return Some(self.one_note(idxs));
+        }
+        if self.file_exists(&rel) {
+            return Some(Ok(Resolved::File { path: rel }));
+        }
+        if !rel.ends_with(".md") {
+            let with_md = format!("{rel}.md");
+            if let Some(idxs) = self.by_path.get(&nfc(&with_md)) {
+                return Some(self.one_note(idxs));
+            }
+        } else if let Some(stripped) = rel.strip_suffix(".md") {
+            if self.file_exists(stripped) {
+                return Some(Ok(Resolved::File {
+                    path: stripped.to_string(),
+                }));
+            }
+        }
+        None
+    }
+
+    fn file_exists(&self, rel: &str) -> bool {
+        let path = self.root.join(rel);
+        path.is_file() && !crate::check::is_note(&self.root, &path)
+    }
+
+    fn one_note(&self, idxs: &[usize]) -> Result<Resolved, ResolveError> {
+        if idxs.len() == 1 {
+            let note = &self.notes[idxs[0]];
+            return Ok(Resolved::Note {
+                id: note.id.clone(),
+                path: note.path.clone(),
+            });
+        }
+        let mut candidates: Vec<String> = idxs
+            .iter()
+            .map(|idx| self.notes[*idx].path.clone())
+            .collect();
+        candidates.sort();
+        Err(ResolveError::Ambiguous { candidates })
+    }
+
+    pub(crate) fn vault_findings(
+        &self,
+        pack: &Pack,
+        scope: &str,
+        scope_is_file: bool,
+    ) -> (Vec<Finding>, BTreeMap<String, Value>) {
+        let mut findings = Vec::new();
+        findings.extend(self.duplicate_ids(scope, scope_is_file));
+        findings.extend(self.alias_clashes(scope, scope_is_file));
+        findings.extend(self.link_findings(pack, scope, scope_is_file));
+        findings.extend(self.supersession(scope, scope_is_file));
+        findings.extend(self.hash_drift(scope, scope_is_file));
+        let details = candidate_details(&findings);
+        (findings, details)
+    }
+
+    fn duplicate_ids(&self, scope: &str, scope_is_file: bool) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (id, idxs) in &self.by_id {
+            if idxs.len() < 2 {
+                continue;
+            }
+            let paths: Vec<&str> = idxs
+                .iter()
+                .map(|idx| self.notes[*idx].path.as_str())
+                .collect();
+            for idx in idxs {
+                let path = &self.notes[*idx].path;
+                if !in_scope(path, scope, scope_is_file) {
+                    continue;
+                }
+                let others: Vec<&str> = paths
+                    .iter()
+                    .copied()
+                    .filter(|other| *other != path)
+                    .collect();
+                findings.push(finding(
+                    FindingCode::DuplicateId,
+                    format!("id {id} is also in {}", others.join(", ")),
+                    path.clone(),
+                ));
+            }
+        }
+        findings
+    }
+
+    fn alias_clashes(&self, scope: &str, scope_is_file: bool) -> Vec<Finding> {
+        let mut owners: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for note in &self.notes {
+            for alias in &note.aliases {
+                owners
+                    .entry(fold_key(alias))
+                    .or_default()
+                    .insert(note.id.clone());
+            }
+        }
+        let mut findings = Vec::new();
+        for (key, ids) in owners {
+            if ids.len() < 2 {
+                continue;
+            }
+            for note in &self.notes {
+                if !in_scope(&note.path, scope, scope_is_file) {
+                    continue;
+                }
+                let Some(alias) = note.aliases.iter().find(|alias| fold_key(alias) == key) else {
+                    continue;
+                };
+                let others: Vec<&str> = self
+                    .notes
+                    .iter()
+                    .filter(|other| other.id != note.id && ids.contains(&other.id))
+                    .filter(|other| other.aliases.iter().any(|item| fold_key(item) == key))
+                    .map(|other| other.path.as_str())
+                    .collect();
+                findings.push(finding(
+                    FindingCode::AliasNotUnique,
+                    format!("alias {alias} is also on {}", others.join(", ")),
+                    note.path.clone(),
+                ));
+            }
+        }
+        findings
+    }
+
+    fn link_findings(&self, pack: &Pack, scope: &str, scope_is_file: bool) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for note in &self.notes {
+            if !in_scope(&note.path, scope, scope_is_file) {
+                continue;
+            }
+            for (embed, link) in &note.wikilinks {
+                let kind = if *embed { "embed" } else { "wikilink" };
+                self.push_link(&mut findings, &note.path, kind, link);
+            }
+            for target in &note.supersedes {
+                self.push_link(&mut findings, &note.path, "supersedes", target);
+            }
+            for (field, target) in &note.typed {
+                if typed_field(pack, &note.type_name, field) {
+                    self.push_link(&mut findings, &note.path, field, target);
+                }
+            }
+        }
+        findings
+    }
+
+    fn push_link(&self, findings: &mut Vec<Finding>, path: &str, kind: &str, link: &str) {
+        match self.resolve(link) {
+            Ok(_) => {}
+            Err(ResolveError::Missing) => findings.push(finding(
+                FindingCode::BrokenLink,
+                format!("{kind} {link} does not resolve"),
+                path.to_string(),
+            )),
+            Err(ResolveError::Ambiguous { candidates }) => findings.push(finding(
+                FindingCode::Ambiguous,
+                format!("{kind} {link} matches {}", candidates.join(", ")),
+                path.to_string(),
+            )),
+        }
+    }
+
+    fn supersession(&self, scope: &str, scope_is_file: bool) -> Vec<Finding> {
+        let unique = self.unique_ids();
+        let mut incoming: BTreeMap<String, usize> = BTreeMap::new();
+        let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut path_of: BTreeMap<String, String> = BTreeMap::new();
+        for note in &self.notes {
+            if !unique.contains(&note.id) {
+                continue;
+            }
+            path_of.insert(note.id.clone(), note.path.clone());
+            for target in &note.supersedes {
+                if let Ok(Resolved::Note { id, .. }) = self.resolve(target) {
+                    if unique.contains(&id) {
+                        if id != note.id {
+                            *incoming.entry(id.clone()).or_default() += 1;
+                        }
+                        edges.entry(note.id.clone()).or_default().push(id);
+                    }
+                }
+            }
+        }
+        let mut findings = Vec::new();
+        for note in &self.notes {
+            if note.status != "superseded" || !unique.contains(&note.id) {
+                continue;
+            }
+            if !in_scope(&note.path, scope, scope_is_file) {
+                continue;
+            }
+            if incoming.get(&note.id).copied().unwrap_or(0) == 0 {
+                findings.push(finding(
+                    FindingCode::SupersededWithoutIncoming,
+                    "status is superseded and no note supersedes this one",
+                    note.path.clone(),
+                ));
+            }
+        }
+        let mut seen = BTreeSet::new();
+        for cycle in find_cycles(&edges) {
+            let rotated = rotate_cycle(&cycle, &path_of);
+            if rotated.is_empty() || !seen.insert(rotated.clone()) {
+                continue;
+            }
+            let Some(path) = rotated
+                .iter()
+                .find(|path| in_scope(path, scope, scope_is_file))
+            else {
+                continue;
+            };
+            let mut chain = rotated.clone();
+            chain.push(rotated[0].clone());
+            findings.push(finding(
+                FindingCode::SupersedesCycle,
+                format!("supersedes cycle {}", chain.join(" -> ")),
+                path.clone(),
+            ));
+        }
+        findings
+    }
+
+    fn hash_drift(&self, scope: &str, scope_is_file: bool) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for note in &self.notes {
+            if note.type_name != "source" || !in_scope(&note.path, scope, scope_is_file) {
+                continue;
+            }
+            let (Some(raw), Some(expected)) = (&note.source_path, &note.sha256) else {
+                continue;
+            };
+            if expected.is_empty() {
+                continue;
+            }
+            let actual = safe_rel(raw).and_then(|rel| self.read_hash(&rel));
+            let drifted = !actual.is_some_and(|hash| hash.eq_ignore_ascii_case(expected));
+            if drifted {
+                findings.push(finding(
+                    FindingCode::Sha256Drift,
+                    format!("sha256 does not match {raw}"),
+                    note.path.clone(),
+                ));
+            }
+        }
+        findings
+    }
+
+    fn read_hash(&self, rel: &str) -> Option<String> {
+        let bytes = fs::read(self.root.join(rel)).ok()?;
+        Some(hex_sha256(&bytes))
+    }
+
+    fn unique_ids(&self) -> BTreeSet<String> {
+        self.by_id
+            .iter()
+            .filter(|(_, idxs)| idxs.len() == 1)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+}
+
+fn note_rec(root: &Path, file: &Path, parsed: &ParsedNote) -> Option<NoteRec> {
+    let id = parsed.values.get("id").and_then(Value::as_str)?;
+    if id.is_empty() {
+        return None;
+    }
+    let type_name = parsed
+        .values
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let status = parsed
+        .values
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let source_path = if type_name == "source" {
+        parsed
+            .values
+            .get("path")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .map(str::to_string)
+    } else {
+        None
+    };
+    let sha256 = parsed
+        .values
+        .get("sha256")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Some(NoteRec {
+        id: id.to_string(),
+        path: rel_path(root, file),
+        aliases: string_list(parsed.values.get("aliases")),
+        status,
+        type_name,
+        supersedes: string_list(parsed.values.get("supersedes")),
+        wikilinks: wikilink_targets(&parsed.body),
+        typed: typed_pairs(parsed),
+        source_path,
+        sha256,
+    })
+}
+
+fn typed_pairs(parsed: &ParsedNote) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    for (key, value) in &parsed.values {
+        if key == "supersedes" || key == "aliases" || key == "id" {
+            continue;
+        }
+        for item in string_list(Some(value)) {
+            pairs.push((key.clone(), item));
+        }
+    }
+    pairs
+}
+
+fn typed_field(pack: &Pack, type_name: &str, field: &str) -> bool {
+    field == "supersedes"
+        || pack.get(type_name).is_some_and(|def| {
+            def.fields
+                .iter()
+                .any(|item| item.name == field && item.target.is_some())
+        })
+}
+
+fn string_list(value: Option<&Value>) -> Vec<String> {
+    match value {
+        Some(Value::String(text)) if !text.is_empty() => vec![text.clone()],
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn candidate_details(findings: &[Finding]) -> BTreeMap<String, Value> {
+    let mut rows = Vec::new();
+    for item in findings {
+        if item.code != FindingCode::Ambiguous {
+            continue;
+        }
+        let Some(matches) = item.message.split(" matches ").nth(1) else {
+            continue;
+        };
+        let link = item
+            .message
+            .split(" matches ")
+            .next()
+            .and_then(|head| head.split(' ').nth(1))
+            .unwrap_or("");
+        let paths: Vec<&str> = matches.split(", ").collect();
+        rows.push(json!({
+            "path": item.path,
+            "link": link,
+            "matches": paths,
+        }));
+    }
+    let mut details = BTreeMap::new();
+    if !rows.is_empty() {
+        details.insert("candidates".to_string(), Value::Array(rows));
+    }
+    details
+}
+
+fn in_scope(path: &str, scope: &str, scope_is_file: bool) -> bool {
+    if scope.is_empty() {
+        return true;
+    }
+    if scope_is_file {
+        path == scope
+    } else {
+        path == scope || path.starts_with(&format!("{scope}/"))
+    }
+}
+
+fn link_target(link: &str) -> String {
+    let trimmed = link.trim();
+    let without_label = trimmed
+        .split_once('|')
+        .map(|(target, _)| target)
+        .unwrap_or(trimmed);
+    let without_heading = without_label
+        .split_once('#')
+        .map(|(target, _)| target)
+        .unwrap_or(without_label);
+    without_heading.trim().to_string()
+}
+
+fn safe_rel(target: &str) -> Option<String> {
+    let text = nfc(target.trim().trim_start_matches("./"));
+    if text.is_empty() || text.starts_with('/') {
+        return None;
+    }
+    let path = Path::new(&text);
+    if path.is_absolute() {
+        return None;
+    }
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return None;
+    }
+    Some(text.replace('\\', "/"))
+}
+
+fn nfc(value: &str) -> String {
+    value.nfc().collect()
+}
+
+fn fold_key(value: &str) -> String {
+    nfc(value).to_lowercase()
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn finding(code: FindingCode, message: impl Into<String>, path: String) -> Finding {
+    Finding {
+        code,
+        message: message.into(),
+        path,
+    }
+}
+
+fn wikilink_targets(body: &str) -> Vec<(bool, String)> {
+    let mut out = Vec::new();
+    let mut fence: Option<(u8, usize)> = None;
+    for line in body.split_inclusive('\n') {
+        let stripped = line.trim_end_matches(['\n', '\r']);
+        if let Some((marker, len)) = fence {
+            if closing_fence(stripped, marker, len) {
+                fence = None;
+            }
+            continue;
+        }
+        if let Some(opened) = opening_fence(stripped) {
+            fence = Some(opened);
+            continue;
+        }
+        scan_line(stripped, &mut out);
+    }
+    out
+}
+
+fn opening_fence(line: &str) -> Option<(u8, usize)> {
+    let trimmed = line.trim_start();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() < 3 || (bytes[0] != b'`' && bytes[0] != b'~') {
+        return None;
+    }
+    let marker = bytes[0];
+    let len = bytes.iter().take_while(|byte| **byte == marker).count();
+    if len < 3 {
+        return None;
+    }
+    let info = trimmed[len..].trim();
+    if marker == b'`' && info.contains('`') {
+        return None;
+    }
+    Some((marker, len))
+}
+
+fn closing_fence(line: &str, marker: u8, len: usize) -> bool {
+    let trimmed = line.trim();
+    let bytes = trimmed.as_bytes();
+    bytes.len() >= len && bytes.iter().all(|byte| *byte == marker)
+}
+
+fn scan_line(line: &str, out: &mut Vec<(bool, String)>) {
+    let chars: Vec<char> = line.chars().collect();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] == '`' {
+            let start = index;
+            while index < chars.len() && chars[index] == '`' {
+                index += 1;
+            }
+            let width = index - start;
+            if let Some(end) = find_run(&chars, index, width) {
+                index = end;
+                continue;
+            }
+            index = start + 1;
+            continue;
+        }
+        let embed = chars[index] == '!'
+            && index + 2 < chars.len()
+            && chars[index + 1] == '['
+            && chars[index + 2] == '[';
+        let plain = chars[index] == '[' && index + 1 < chars.len() && chars[index + 1] == '[';
+        if embed || plain {
+            let content = if embed { index + 3 } else { index + 2 };
+            if let Some(end) = find_close(&chars, content) {
+                out.push((embed, chars[content..end].iter().collect()));
+                index = end + 2;
+                continue;
+            }
+        }
+        index += 1;
+    }
+}
+
+fn find_run(chars: &[char], from: usize, width: usize) -> Option<usize> {
+    let mut index = from;
+    while index < chars.len() {
+        if chars[index] == '`' {
+            let start = index;
+            while index < chars.len() && chars[index] == '`' {
+                index += 1;
+            }
+            if index - start == width {
+                return Some(index);
+            }
+            continue;
+        }
+        index += 1;
+    }
+    None
+}
+
+fn find_close(chars: &[char], from: usize) -> Option<usize> {
+    let mut index = from;
+    while index + 1 < chars.len() {
+        if chars[index] == ']' && chars[index + 1] == ']' {
+            return Some(index);
+        }
+        index += 1;
+    }
+    None
+}
+
+fn find_cycles(edges: &BTreeMap<String, Vec<String>>) -> Vec<Vec<String>> {
+    let mut cycles = Vec::new();
+    let mut color: BTreeMap<String, u8> = BTreeMap::new();
+    let mut stack = Vec::new();
+    let ids: Vec<String> = edges.keys().cloned().collect();
+    for id in ids {
+        if color.get(&id).copied().unwrap_or(0) == 0 {
+            walk(&id, edges, &mut color, &mut stack, &mut cycles);
+        }
+    }
+    cycles
+}
+
+fn walk(
+    id: &str,
+    edges: &BTreeMap<String, Vec<String>>,
+    color: &mut BTreeMap<String, u8>,
+    stack: &mut Vec<String>,
+    cycles: &mut Vec<Vec<String>>,
+) {
+    color.insert(id.to_string(), 1);
+    stack.push(id.to_string());
+    if let Some(nexts) = edges.get(id) {
+        for next in nexts {
+            match color.get(next).copied().unwrap_or(0) {
+                1 => {
+                    if let Some(at) = stack.iter().position(|node| node == next) {
+                        let mut cycle = stack[at..].to_vec();
+                        cycle.push(next.clone());
+                        cycles.push(cycle);
+                    }
+                }
+                0 => walk(next, edges, color, stack, cycles),
+                _ => {}
+            }
+        }
+    }
+    stack.pop();
+    color.insert(id.to_string(), 2);
+}
+
+fn rotate_cycle(cycle: &[String], path_of: &BTreeMap<String, String>) -> Vec<String> {
+    let mut nodes: Vec<&str> = cycle.iter().map(String::as_str).collect();
+    if nodes.first() == nodes.last() && nodes.len() > 1 {
+        nodes.pop();
+    }
+    let paths: Vec<String> = nodes
+        .iter()
+        .filter_map(|id| path_of.get(*id).cloned())
+        .collect();
+    if paths.len() != nodes.len() || paths.is_empty() {
+        return Vec::new();
+    }
+    let min = paths
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, path)| *path)
+        .map(|(index, _)| index)
+        .unwrap_or(0);
+    let mut rotated = paths[min..].to_vec();
+    rotated.extend(paths[..min].iter().cloned());
+    rotated
+}

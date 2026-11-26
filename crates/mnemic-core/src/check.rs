@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -29,7 +30,13 @@ pub enum CheckFatal {
     Io(String),
 }
 
-pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct CheckReport {
+    pub findings: Vec<Finding>,
+    pub details: BTreeMap<String, Value>,
+}
+
+pub fn check_path(vault: &Vault, path: &Path) -> Result<CheckReport, CheckFatal> {
     let (root, start) = match crate::vault::canonicalize_within(&vault.root, path) {
         Ok(confined) => confined,
         Err(crate::vault::ConfineError::Outside(message)) => {
@@ -40,7 +47,7 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal
     let mut files = Vec::new();
     if start.is_file() {
         if is_note(&root, &start) {
-            files.push(start);
+            files.push(start.clone());
         }
     } else {
         collect_notes(&root, &start, &mut files)?;
@@ -48,7 +55,12 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal
     files.sort();
     let pack = match pack::resolve_pack(&root) {
         Ok(pack) => pack,
-        Err(err) => return Ok(vec![invalid_pack_finding(&err)]),
+        Err(err) => {
+            return Ok(CheckReport {
+                findings: vec![invalid_pack_finding(&err)],
+                details: BTreeMap::new(),
+            });
+        }
     };
     let mut findings = Vec::new();
     for file in files {
@@ -74,7 +86,15 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal
             Err(err) => findings.push(frontmatter_finding(err, rel)),
         }
     }
-    Ok(findings)
+    let index = crate::index::index_vault(&root)?;
+    let scope = if start == root {
+        String::new()
+    } else {
+        rel_path(&root, &start)
+    };
+    let (extra, details) = index.vault_findings(&pack, &scope, start.is_file());
+    findings.extend(extra);
+    Ok(CheckReport { findings, details })
 }
 
 fn core_findings(note: &ParsedNote, path: String) -> Vec<Finding> {
@@ -350,7 +370,11 @@ pub fn is_note(vault_root: &Path, path: &Path) -> bool {
     !rel.starts_with(Path::new("sources").join("raw"))
 }
 
-fn collect_notes(vault_root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), CheckFatal> {
+pub(crate) fn collect_notes(
+    vault_root: &Path,
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), CheckFatal> {
     let entries = fs::read_dir(dir).map_err(|err| CheckFatal::Io(err.to_string()))?;
     for entry in entries {
         let entry = entry.map_err(|err| CheckFatal::Io(err.to_string()))?;
@@ -371,7 +395,7 @@ fn collect_notes(vault_root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Resul
     Ok(())
 }
 
-fn rel_path(root: &Path, path: &Path) -> String {
+pub(crate) fn rel_path(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
         .to_string_lossy()

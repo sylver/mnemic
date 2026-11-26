@@ -131,8 +131,11 @@ fn broken_type_classes_use_findings_shape() {
 #[test]
 fn invalid_pack_uses_the_findings_shape() {
     let err = mnemic_core::load_pack([("person", "folder = [")]).expect_err("pack");
-    let envelope =
-        mnemic_core::findings_envelope(vec![mnemic_core::invalid_pack_finding(&err)], Vec::new());
+    let envelope = mnemic_core::findings_envelope(
+        vec![mnemic_core::invalid_pack_finding(&err)],
+        Vec::new(),
+        std::collections::BTreeMap::new(),
+    );
     let stdout = mnemic_core::to_json(&envelope).expect("json");
     assert!(stdout.contains("\"INVALID_PACK\""));
     assert!(stdout.contains("\"CHECK_FAILED\""));
@@ -256,6 +259,54 @@ fn symlinked_types_dir_does_not_apply_an_outside_pack() {
 fn assert_json_at(path: &Path, code: i32) -> String {
     let path = path.to_str().expect("utf-8 path");
     assert_json(&["check", path, "--json"], code)
+}
+
+#[test]
+fn broken_vault_classes_use_findings_shape() {
+    for class in [
+        "duplicate-id",
+        "alias-clash",
+        "cycle",
+        "superseded",
+        "broken-link",
+        "missing-embed",
+        "drift",
+        "ambiguous",
+    ] {
+        let stdout = assert_json(
+            &["check", &format!("fixtures/broken-vault/{class}"), "--json"],
+            2,
+        );
+        insta::with_settings!({ snapshot_suffix => class }, {
+            insta::assert_snapshot!(stdout);
+        });
+    }
+}
+
+#[test]
+fn broken_vault_tree_exits_two() {
+    let stdout = assert_json(&["check", "fixtures/broken-vault", "--json"], 2);
+    for code in [
+        "DUPLICATE_ID",
+        "ALIAS_NOT_UNIQUE",
+        "SUPERSEDES_CYCLE",
+        "SUPERSEDED_WITHOUT_INCOMING",
+        "BROKEN_LINK",
+        "SHA256_DRIFT",
+        "AMBIGUOUS",
+    ] {
+        assert!(
+            stdout.contains(&format!("\"{code}\"")),
+            "{code} missing in {stdout}"
+        );
+    }
+    assert!(stdout.contains("\"candidates\""));
+}
+
+#[test]
+fn case_fold_vault_exits_zero() {
+    let stdout = assert_json(&["check", "fixtures/case-fold", "--json"], 0);
+    assert!(stdout.contains("\"ok\": true"));
 }
 
 #[test]
