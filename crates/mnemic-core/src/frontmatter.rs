@@ -233,6 +233,31 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn a_leading_bom_stays_outside_the_parsed_block() {
+        let source = "\u{feff}---\ntitle: Kept\n---\n\nBody\n";
+        let note = parse_note(source).expect("parse");
+        assert_eq!(source.as_bytes()[0], 0xEF);
+        assert_eq!(note.values["title"], Value::String("Kept".to_string()));
+        assert_eq!(note.body, "\nBody\n");
+        assert!(source[note.block.start..note.block.end].contains("title: Kept"));
+    }
+
+    #[test]
+    fn an_empty_or_null_document_is_an_empty_mapping() {
+        for source in ["---\n---\nBody\n", "---\n\n---\nBody\n", "---\nnull\n---\nBody\n"] {
+            let note = parse_note(source).expect(source);
+            assert!(note.values.is_empty());
+            assert!(note.keys.is_empty());
+            assert!(note.body.ends_with("Body\n"));
+        }
+        assert_eq!(
+            parse_note("---\n- a\n---\n").unwrap_err(),
+            FrontmatterError::NotAMapping
+        );
+    }
+
+    #[test]
     fn rejects_each_frontmatter_class() {
         assert_eq!(parse_note("# hi\n").unwrap_err(), FrontmatterError::Missing);
         assert_eq!(

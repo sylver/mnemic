@@ -136,6 +136,78 @@ fn fix_does_not_guess_type_id_or_root_docs() {
     assert!(!messages.contains("README.md"));
 }
 
+fn lone_vault(rel: &str, bytes: &[u8]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("mnemic.toml"),
+        "schema_version = 1\nactor = \"sylver\"\n",
+    )
+    .unwrap();
+    let path = dir.path().join(rel);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, bytes).unwrap();
+    dir
+}
+
+fn without_minted_lines(text: &str) -> String {
+    let mut restored = String::new();
+    for line in text.split_inclusive('\n') {
+        if line.starts_with("id: ") || line.starts_with("type: ") {
+            continue;
+        }
+        restored.push_str(line);
+    }
+    restored
+}
+
+fn fix_twice(dir: &Path, rel: &str) -> Vec<u8> {
+    let first: Value = serde_json::from_str(&library_fix(dir)).unwrap();
+    assert!(!first["data"]["changes"].as_array().unwrap().is_empty());
+    let edited = fs::read(dir.join(rel)).unwrap();
+    let again: Value = serde_json::from_str(&library_fix(dir)).unwrap();
+    assert_eq!(again["data"]["changes"], serde_json::json!([]));
+    assert_eq!(fs::read(dir.join(rel)).unwrap(), edited);
+    edited
+}
+
+#[test]
+fn fix_keeps_a_leading_bom_and_inserts_inside_the_existing_block() {
+    let original = b"\xEF\xBB\xBF---\ntitle: Kept\n---\n\nKept body.\n";
+    let dir = lone_vault("inbox/bom.md", original);
+    let edited = fix_twice(dir.path(), "inbox/bom.md");
+    assert_eq!(&edited[..3], b"\xEF\xBB\xBF");
+    let text = String::from_utf8(edited).unwrap();
+    assert_eq!(without_minted_lines(&text).as_bytes(), original);
+    assert!(text.contains("title: Kept\n"));
+    assert!(text.contains("type: note\n"));
+    assert_eq!(text.matches("\n---\n").count(), 1);
+}
+
+#[test]
+fn fix_fills_a_closed_empty_fence_and_leaves_the_body() {
+    for source in ["---\n---\nBody stays.\n", "---\n\n---\nBody stays.\n"] {
+        let dir = lone_vault("inbox/empty.md", source.as_bytes());
+        let edited = fix_twice(dir.path(), "inbox/empty.md");
+        let text = String::from_utf8(edited).unwrap();
+        assert_eq!(without_minted_lines(&text), source);
+        assert!(text.contains("type: note\n"));
+        assert!(text.ends_with("Body stays.\n"));
+    }
+}
+
+#[test]
+fn fix_leaves_a_non_mapping_fence_untouched() {
+    let original = b"---\n- a\n---\nBody\n";
+    let dir = lone_vault("inbox/list.md", original);
+    let stdout = library_fix(dir.path());
+    let body: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(body["data"]["changes"], serde_json::json!([]));
+    assert_eq!(
+        fs::read(dir.path().join("inbox/list.md")).unwrap(),
+        original
+    );
+}
+
 #[test]
 fn fix_no_frontmatter_creates_a_minimal_block_and_keeps_the_body() {
     let dir = temp_fixture("fix-no-frontmatter");
