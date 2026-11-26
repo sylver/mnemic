@@ -316,7 +316,10 @@ fn outside_destination_leaves_the_source_and_creates_nothing_outside() {
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
     assert_eq!(json(&output)["error"]["code"], "OUTSIDE_VAULT");
     assert_eq!(fs::read(&source).expect("source"), before);
-    assert!(fs::read_dir(outside.path()).expect("outside").next().is_none());
+    assert!(fs::read_dir(outside.path())
+        .expect("outside")
+        .next()
+        .is_none());
 
     let vault = copy_vault();
     let source = vault.join("people/old-slug.md");

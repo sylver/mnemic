@@ -1,4 +1,4 @@
-# ADR-0010: Move renames without replacing, then rewrites links
+# ADR-0012: Move renames without replacing, then rewrites links
 
 ## Status
 

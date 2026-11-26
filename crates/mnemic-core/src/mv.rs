@@ -23,6 +23,7 @@ use crate::vault::{self, ConfineError, VaultError};
 use crate::write::{self, WriteTxn};
 use crate::Error;
 
+#[cfg(debug_assertions)]
 const CRASH_ENV: &str = "MNEMIC_MV_CRASH";
 
 /// Inputs for [`move_note`]. `note` is a path, id, slug, or alias.
@@ -160,6 +161,7 @@ fn move_locked(
         DestShape::Directory { dir } => format!("{dir}{}", located.file_name),
         DestShape::File { rel } => rel.clone(),
     };
+    confine_dest(root, &to)?;
     if located.path == to {
         let from = link_from(root, note, &located.path);
         let rewritten = if rewrite {
@@ -193,17 +195,19 @@ fn move_locked(
     }
     let source_full = confined_file(root, &located.path)?;
     let mut alias_added = false;
-    if slug_changed && !alias_present(&located.aliases, &located.slug) {
-        let bytes = fs::read(&source_full).map_err(|err| MoveError::Io(err.to_string()))?;
-        let source = String::from_utf8(bytes)
-            .map_err(|_| MoveError::Io(format!("{} is not UTF-8", located.path)))?;
-        let with_alias = FrontmatterEdit::append_sequence_item(&source, "aliases", &located.slug)
-            .map_err(|err| MoveError::Io(format!("aliases: {err}")))?;
+    if slug_changed {
+        let source = read_note(root, &located.path)?;
+        let with_alias = if alias_present(&located.aliases, &located.slug) {
+            source
+        } else {
+            alias_added = true;
+            FrontmatterEdit::append_sequence_item(&source, "aliases", &located.slug)
+                .map_err(|err| MoveError::Io(format!("aliases: {err}")))?
+        };
         let stamped = FrontmatterEdit::replace(&with_alias, "updated", &stamp(clock))
             .map_err(|err| MoveError::Io(format!("updated: {err}")))?;
         txn.atomic_write(&source_full, stamped.as_bytes())
             .map_err(|err| MoveError::Io(err.to_string()))?;
-        alias_added = true;
         maybe_crash("after-alias");
     }
     let dest_full = prepare_dest(root, &to)?;
@@ -339,8 +343,7 @@ fn recover_basename(
 }
 
 fn load_located(root: &Path, id: String, path: String) -> Result<Located, MoveError> {
-    let full = confined_file(root, &path)?;
-    let bytes = fs::read(&full).map_err(|err| MoveError::Io(err.to_string()))?;
+    let bytes = regular_file_inside(root, &path)?;
     let text =
         String::from_utf8(bytes).map_err(|_| MoveError::Io(format!("{path} is not UTF-8")))?;
     let parsed = frontmatter::parse_note(&text).map_err(|err| match err {
@@ -409,23 +412,47 @@ fn dest_shape(root: &Path, dest: &str) -> Result<DestShape, MoveError> {
 
 fn vault_relative(root: &Path, dest: &str) -> Result<String, MoveError> {
     let path = Path::new(dest);
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(MoveError::OutsideVault(format!(
+            "{dest} is outside the vault"
+        )));
+    }
     if path.is_absolute() {
         return match vault::canonicalize_within(root, path) {
             Ok((canon_root, canon)) => Ok(strip_root(&canon_root, &canon)),
             Err(ConfineError::Outside(message)) => Err(MoveError::OutsideVault(message)),
-            Err(ConfineError::Io(_)) => {
-                let canon_root =
-                    fs::canonicalize(root).map_err(|err| MoveError::Io(err.to_string()))?;
-                if path.starts_with(&canon_root) {
-                    Ok(strip_root(&canon_root, path))
-                } else {
-                    Err(MoveError::OutsideVault(format!(
-                        "{dest} is outside the vault"
-                    )))
-                }
-            }
+            Err(ConfineError::Io(_)) => absolute_missing(root, path, dest),
         };
     }
+    lexical_relative(dest, path)
+}
+
+fn absolute_missing(root: &Path, path: &Path, dest: &str) -> Result<String, MoveError> {
+    let (canon_root, _) = vault::canonicalize_within(root, root).map_err(confine_map)?;
+    let mut root_parts = canon_root.components();
+    let mut dest_parts = path.components();
+    loop {
+        match (root_parts.next(), dest_parts.next()) {
+            (Some(left), Some(right)) if left == right => {}
+            (None, None) => return Ok(String::new()),
+            (None, Some(component)) => {
+                let mut rest = vec![component];
+                rest.extend(dest_parts);
+                return lexical_relative(dest, &PathBuf::from_iter(rest));
+            }
+            _ => {
+                return Err(MoveError::OutsideVault(format!(
+                    "{dest} is outside the vault"
+                )));
+            }
+        }
+    }
+}
+
+fn lexical_relative(dest: &str, path: &Path) -> Result<String, MoveError> {
     let mut parts = Vec::new();
     for component in path.components() {
         match component {
@@ -444,6 +471,13 @@ fn vault_relative(root: &Path, dest: &str) -> Result<String, MoveError> {
         }
     }
     Ok(parts.join("/"))
+}
+
+fn confine_map(err: ConfineError) -> MoveError {
+    match err {
+        ConfineError::Outside(message) => MoveError::OutsideVault(message),
+        ConfineError::Io(message) => MoveError::Io(message),
+    }
 }
 
 fn strip_root(root: &Path, path: &Path) -> String {
@@ -476,8 +510,27 @@ fn confined_file(root: &Path, rel: &str) -> Result<PathBuf, MoveError> {
     }
 }
 
+fn confine_dest(root: &Path, rel: &str) -> Result<(), MoveError> {
+    let mut cursor = root.to_path_buf();
+    let parent = Path::new(rel).parent().unwrap_or(Path::new(""));
+    for component in parent.components() {
+        let Component::Normal(part) = component else {
+            return Err(MoveError::OutsideVault(format!(
+                "{rel} is outside the vault"
+            )));
+        };
+        cursor.push(part);
+        match vault::canonicalize_within(root, &cursor) {
+            Ok((_, canon)) => cursor = canon,
+            Err(ConfineError::Io(_)) => return Ok(()),
+            Err(ConfineError::Outside(message)) => return Err(MoveError::OutsideVault(message)),
+        }
+    }
+    Ok(())
+}
+
 fn prepare_dest(root: &Path, rel: &str) -> Result<PathBuf, MoveError> {
-    let mut cursor = fs::canonicalize(root).map_err(|err| MoveError::Io(err.to_string()))?;
+    let (_, mut cursor) = vault::canonicalize_within(root, root).map_err(confine_map)?;
     let path = Path::new(rel);
     let parent = path.parent().unwrap_or(Path::new(""));
     for component in parent.components() {
@@ -574,14 +627,14 @@ fn rewrite_incoming(
     paths.sort();
     let mut rewritten = Vec::new();
     for path in paths {
-        let full = confined_file(root, &path)?;
-        let bytes = fs::read(&full).map_err(|err| MoveError::Io(err.to_string()))?;
+        let bytes = regular_file_inside(root, &path)?;
         let text =
             String::from_utf8(bytes).map_err(|_| MoveError::Io(format!("{path} is not UTF-8")))?;
         let Some(next) = rewrite_note(&text, &old_slug, &old_rel, &new_slug, new_rel) else {
             continue;
         };
         if next != text {
+            let full = confined_file(root, &path)?;
             txn.atomic_write(&full, next.as_bytes())
                 .map_err(|err| MoveError::Io(err.to_string()))?;
             rewritten.push(path);
@@ -695,10 +748,28 @@ fn stamp(clock: &dyn Clock) -> String {
     dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
+fn read_note(root: &Path, rel: &str) -> Result<String, MoveError> {
+    let bytes = regular_file_inside(root, rel)?;
+    String::from_utf8(bytes).map_err(|_| MoveError::Io(format!("{rel} is not UTF-8")))
+}
+
+fn regular_file_inside(root: &Path, rel: &str) -> Result<Vec<u8>, MoveError> {
+    let full = confined_file(root, rel)?;
+    if !crate::check::regular_file_inside(root, &full) {
+        return Err(MoveError::Io(format!(
+            "{rel} is not a regular file in the vault"
+        )));
+    }
+    fs::read(&full).map_err(|err| MoveError::Io(err.to_string()))
+}
+
 fn maybe_crash(point: &str) {
+    #[cfg(debug_assertions)]
     if std::env::var(CRASH_ENV).ok().as_deref() == Some(point) {
         std::process::exit(97);
     }
+    #[cfg(not(debug_assertions))]
+    let _ = point;
 }
 
 fn vault_error(err: VaultError) -> MoveError {

@@ -12,8 +12,8 @@
 | [0008](0008-get-and-links.md) | get and links share the vault index | Accepted |
 | [0009](0009-search-scans-the-vault.md) | Search scans the parsed vault | Accepted |
 | [0010](0010-new-note.md) | new files one note under the write lock | Accepted |
-| [0010](0010-move-rename.md) | Move renames without replacing, then rewrites links | Accepted |
 | [0011](0011-check-fix.md) | check --fix inserts only derived id and type | Accepted |
+| [0012](0012-move-rename.md) | Move renames without replacing, then rewrites links | Accepted |
 
 ## Rules
 

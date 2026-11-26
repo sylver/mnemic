@@ -125,6 +125,13 @@ const CLOSED: &[(&str, &str, &str, u32)] = &[
         "File::open",
         1,
     ),
+    // Directory fsync after the exclusive rename, same as commit_temp.
+    (
+        "crates/mnemic-core/src/write/atomic.rs",
+        "rename_exclusive",
+        "File::open",
+        1,
+    ),
     (
         "crates/mnemic-core/src/write/atomic.rs",
         "random_u64",
