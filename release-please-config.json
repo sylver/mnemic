@@ -3,7 +3,7 @@
   "include-commit-authors": true,
   "pull-request-title-pattern": "chore(release): v${version}",
   "pull-request-header": "Automated release",
-  "pull-request-footer": "",
+  "pull-request-footer": "<!-- -->",
   "plugins": ["sentence-case"],
   "packages": {
     ".": {
