@@ -389,7 +389,12 @@ impl VaultIndex {
     }
 
     fn read_hash(&self, raw: &str) -> Option<String> {
-        let path = confined_file(&self.root, raw)?;
+        let rel = safe_rel(raw)?;
+        let joined = self.root.join(rel);
+        let (_root, path) = crate::vault::canonicalize_within(&self.root, &joined).ok()?;
+        if !fs::symlink_metadata(&path).ok()?.file_type().is_file() {
+            return None;
+        }
         let bytes = fs::read(path).ok()?;
         Some(hex_sha256(&bytes))
     }
@@ -548,24 +553,6 @@ fn safe_rel(target: &str) -> Option<String> {
         return None;
     }
     Some(text)
-}
-
-/// A regular file whose canonical path stays inside the canonical vault root.
-/// `..`, an absolute path, a symlink that leaves the vault, and anything that
-/// is not a regular file return `None`. The outside file is not read.
-fn confined_file(root: &Path, target: &str) -> Option<PathBuf> {
-    let rel = safe_rel(target)?;
-    let joined = root.join(rel);
-    fs::symlink_metadata(&joined).ok()?;
-    let canon_root = fs::canonicalize(root).ok()?;
-    let canon = fs::canonicalize(&joined).ok()?;
-    if canon == canon_root || !canon.starts_with(&canon_root) {
-        return None;
-    }
-    if !fs::symlink_metadata(&canon).ok()?.file_type().is_file() {
-        return None;
-    }
-    Some(canon)
 }
 
 fn nfc(value: &str) -> String {
