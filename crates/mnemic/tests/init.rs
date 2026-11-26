@@ -221,6 +221,77 @@ fn second_init_does_not_rewrite_toml_or_gitignore() {
     assert!(names(&body, "created").is_empty(), "{body}");
 }
 
+#[cfg(unix)]
+#[test]
+fn dangling_agents_symlink_is_skipped_and_unchanged() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().expect("temp");
+    let link = dir.path().join("AGENTS.md");
+    symlink("missing-agents.md", &link).expect("symlink");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(link
+        .symlink_metadata()
+        .expect("meta")
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(&link).expect("link"),
+        PathBuf::from("missing-agents.md")
+    );
+    assert!(!dir.path().join("missing-agents.md").exists());
+    let skipped = names(&json_value(&output), "skipped");
+    assert!(
+        skipped.iter().any(|path| path == "AGENTS.md"),
+        "{skipped:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_gitignore_needing_append_writes_nothing() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().expect("temp");
+    let target = dir.path().join("ignore-target");
+    let original = b"*.tmp\n";
+    fs::write(&target, original).expect("gitignore target");
+    let link = dir.path().join(".gitignore");
+    symlink("ignore-target", &link).expect("symlink");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let body = json_value(&output);
+    assert_eq!(body["ok"], false);
+    assert!(body["data"].is_null());
+    assert_eq!(body["error"]["code"], "IO");
+    let message = body["error"]["message"].as_str().expect("message");
+    assert!(message.contains("symlink"), "{message}");
+    assert!(message.contains(".gitignore"), "{message}");
+    assert!(!dir.path().join("mnemic.toml").exists());
+    assert!(!dir.path().join("AGENTS.md").exists());
+    assert_eq!(fs::read(&target).expect("target"), original);
+    assert!(link
+        .symlink_metadata()
+        .expect("meta")
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(&link).expect("link"),
+        PathBuf::from("ignore-target")
+    );
+}
+
 #[test]
 fn vault_flag_does_not_walk_and_does_not_init_the_cwd() {
     let dir = tempfile::tempdir().expect("temp");
