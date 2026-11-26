@@ -68,6 +68,14 @@ jobs:
             echo "invalid title was accepted" >&2
             exit 1
           fi
+          if ./scripts/check-conventional-commit.sh "feat:no-space"; then
+            echo "missing space after colon was accepted" >&2
+            exit 1
+          fi
+          if ./scripts/check-conventional-commit.sh "$(printf 'feat: ok\nignored tail')"; then
+            echo "embedded newline was accepted" >&2
+            exit 1
+          fi
       - name: Check the pull request title
         if: github.event_name == 'pull_request'
         env:
