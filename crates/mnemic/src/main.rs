@@ -2,12 +2,15 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use std::collections::BTreeMap;
+
 use mnemic_core::{
-    exit_code, fatal_envelope, findings_envelope, init_vault, log_note, search_vault,
-    success_envelope, to_json, CheckEnvelope, CheckFatal, EnvelopeCode, InitData, InitError,
-    InitRequest, InitSuccess, LogError, LogRequest, SearchData, SearchEnvelope, SearchError,
-    SearchRequest, SystemClock, VaultError,
+    exit_code, fatal_envelope, fatal_envelope_with, findings_envelope, init_vault, log_note,
+    read_note, search_vault, success_envelope, to_json, CheckEnvelope, CheckFatal, EnvelopeCode,
+    InitData, InitError, InitRequest, InitSuccess, LogError, LogRequest, NoteView, ReadError,
+    SearchData, SearchEnvelope, SearchError, SearchRequest, SystemClock, VaultError,
 };
+use serde_json::{json, Value};
 
 #[derive(Parser)]
 #[command(name = "mnemic", version, about = "Mnemic")]
@@ -77,8 +80,29 @@ enum Command {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Print one note by id, slug, alias, or vault-relative path.
+    Get {
+        /// Id, slug, alias, or vault-relative path.
+        query: String,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
+    /// List outgoing links, backlinks, and broken links for one note.
+    Links {
+        /// Id, slug, alias, or vault-relative path.
+        note: String,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
 }
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
@@ -99,6 +123,8 @@ fn main() -> ExitCode {
             json,
             vault,
         } => search(query, type_name, tag, since, limit, json, vault),
+        Command::Get { query, json, vault } => show(query, json, vault, false),
+        Command::Links { note, json, vault } => show(note, json, vault, true),
     }
 }
 
@@ -250,6 +276,132 @@ fn emit_search(json: bool, data: SearchData) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+fn show(query: String, json: bool, vault: Option<PathBuf>, links_only: bool) -> ExitCode {
+    let start = vault.clone().unwrap_or_else(|| PathBuf::from("."));
+    let opened = mnemic_core::open_vault(&start, vault.as_deref());
+    let vault = match opened {
+        Ok(vault) => vault,
+        Err(err) => {
+            let (code, message) = fatal_from_vault(err);
+            return emit(json, fatal_envelope(code, message), exit_code(code));
+        }
+    };
+    match read_note(&vault.root, &query) {
+        Ok(note) => emit_note(json, &note, links_only),
+        Err(err) => {
+            let (code, envelope) = fatal_from_read(err);
+            emit(json, envelope, exit_code(code))
+        }
+    }
+}
+
+fn fatal_from_read(err: ReadError) -> (EnvelopeCode, CheckEnvelope) {
+    match err {
+        ReadError::NotFound(message) => (
+            EnvelopeCode::NotFound,
+            fatal_envelope(EnvelopeCode::NotFound, format!("no note matches {message}")),
+        ),
+        ReadError::Ambiguous { query, candidates } => {
+            let rows: Vec<Value> = candidates
+                .iter()
+                .map(|candidate| json!({ "id": candidate.id, "path": candidate.path }))
+                .collect();
+            let mut details = BTreeMap::new();
+            details.insert("candidates".to_string(), Value::Array(rows));
+            let paths: Vec<&str> = candidates
+                .iter()
+                .map(|candidate| candidate.path.as_str())
+                .collect();
+            (
+                EnvelopeCode::Ambiguous,
+                fatal_envelope_with(
+                    EnvelopeCode::Ambiguous,
+                    format!("{query} matches {}", paths.join(", ")),
+                    details,
+                ),
+            )
+        }
+        ReadError::OutsideVault(message) => (
+            EnvelopeCode::OutsideVault,
+            fatal_envelope(
+                EnvelopeCode::OutsideVault,
+                format!("{message} is outside the vault"),
+            ),
+        ),
+        ReadError::Io(message) => (EnvelopeCode::Io, fatal_envelope(EnvelopeCode::Io, message)),
+    }
+}
+
+fn emit_note(json: bool, note: &NoteView, links_only: bool) -> ExitCode {
+    if json {
+        let value = if links_only {
+            json!({
+                "ok": true,
+                "data": {
+                    "id": note.id,
+                    "path": note.path,
+                    "outgoing": note.outgoing,
+                    "backlinks": note.backlinks,
+                    "broken": note.broken,
+                },
+                "error": null,
+            })
+        } else {
+            json!({
+                "ok": true,
+                "data": {
+                    "id": note.id,
+                    "path": note.path,
+                    "slug": note.slug,
+                    "title": note.title,
+                    "type": note.type_name,
+                    "status": note.status,
+                    "frontmatter": note.frontmatter,
+                    "body": note.body,
+                    "outgoing": note.outgoing,
+                    "backlinks": note.backlinks,
+                },
+                "error": null,
+            })
+        };
+        return print_value(value);
+    }
+    if links_only {
+        println!("{} {}", note.id, note.path);
+        print_edges("outgoing", &note.outgoing);
+        print_edges("backlinks", &note.backlinks);
+        print_edges("broken", &note.broken);
+    } else {
+        println!("{} {}", note.id, note.path);
+        println!("{}", note.title);
+        println!("{}", note.body);
+        print_edges("outgoing", &note.outgoing);
+        print_edges("backlinks", &note.backlinks);
+    }
+    ExitCode::SUCCESS
+}
+
+fn print_edges(label: &str, edges: &[mnemic_core::LinkEdge]) {
+    println!("{label}:");
+    for edge in edges {
+        let target = edge.target.as_deref().unwrap_or("-");
+        println!("  {} {} -> {target}", edge.kind, edge.raw);
+    }
+}
+
+fn print_value(value: Value) -> ExitCode {
+    match serde_json::to_string_pretty(&value) {
+        Ok(text) => {
+            println!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn init(json: bool, vault: Option<PathBuf>, actor: Option<String>) -> ExitCode {

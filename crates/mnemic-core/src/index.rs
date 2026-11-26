@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::thread;
 
+use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
@@ -72,7 +73,33 @@ pub enum Resolved {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolveError {
     Missing,
-    Ambiguous { candidates: Vec<String> },
+    Ambiguous {
+        candidates: Vec<String>,
+    },
+    /// A user path argument leaves the vault. Wikilink resolution does not
+    /// return this. [`VaultIndex::resolve_argument`] does.
+    Outside,
+}
+
+/// One wikilink, embed, or typed frontmatter edge.
+///
+/// `kind` is `wikilink`, `embed`, or `frontmatter:<field>`. `target` is the
+/// note id when [`VaultIndex::resolve`] returns a note. `source` is the id of
+/// the note that contains the link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LinkEdge {
+    pub kind: String,
+    pub raw: String,
+    pub source: String,
+    pub target: Option<String>,
+}
+
+/// Outgoing edges, backlinks, and unresolved edges for one note id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkSets {
+    pub outgoing: Vec<LinkEdge>,
+    pub backlinks: Vec<LinkEdge>,
+    pub broken: Vec<LinkEdge>,
 }
 
 /// Load every note under `root`. `root` is the vault directory.
@@ -137,6 +164,17 @@ impl VaultIndex {
             by_slug,
             by_alias,
         }
+    }
+
+    /// Resolve a user note argument from `get`, `links`, or `log`.
+    ///
+    /// `..`, an absolute path outside the vault, and a path whose canonical
+    /// form leaves the vault are [`ResolveError::Outside`]. The check is
+    /// [`crate::vault::canonicalize_within`]. It does not open the target.
+    /// A bare id, slug, or alias continues into [`VaultIndex::resolve`].
+    pub fn resolve_argument(&self, query: &str) -> Result<Resolved, ResolveError> {
+        let query = confine_user_path(&self.root, query)?;
+        self.resolve(&query)
     }
 
     /// Resolve the inside of a wikilink. A `#heading` is ignored. A `|label`
@@ -317,7 +355,7 @@ impl VaultIndex {
     fn push_link(&self, findings: &mut Vec<Finding>, path: &str, kind: &str, link: &str) {
         match self.resolve(link) {
             Ok(_) => {}
-            Err(ResolveError::Missing) => findings.push(finding(
+            Err(ResolveError::Missing | ResolveError::Outside) => findings.push(finding(
                 FindingCode::BrokenLink,
                 format!("{kind} {link} does not resolve"),
                 path.to_string(),
@@ -422,6 +460,83 @@ impl VaultIndex {
         }
         let bytes = fs::read(path).ok()?;
         Some(hex_sha256(&bytes))
+    }
+
+    /// Edges for `id`, using [`VaultIndex::resolve`] for each target.
+    ///
+    /// Resolved edges from this id are `outgoing`. Resolved edges whose
+    /// target is this id are `backlinks`. Edges from this id that are missing
+    /// or ambiguous are `broken`. A resolved file has no note id, so `target`
+    /// is `None` and the edge stays in `outgoing`.
+    pub fn link_sets(&self, id: &str, pack: &Pack) -> LinkSets {
+        let mut edges = Vec::new();
+        for note in &self.notes {
+            for (embed, raw) in &note.wikilinks {
+                let kind = if *embed { "embed" } else { "wikilink" };
+                edges.push(self.edge(note, kind, raw));
+            }
+            for raw in &note.supersedes {
+                edges.push(self.edge(note, "frontmatter:supersedes", raw));
+            }
+            for (field, raw) in &note.typed {
+                if field == "supersedes" {
+                    continue;
+                }
+                if typed_field(pack, &note.type_name, field) {
+                    edges.push(self.edge(note, &format!("frontmatter:{field}"), raw));
+                }
+            }
+        }
+        let mut outgoing = Vec::new();
+        let mut backlinks = Vec::new();
+        let mut broken = Vec::new();
+        for (edge, resolved) in edges {
+            if edge.source == id {
+                if resolved {
+                    outgoing.push(edge.clone());
+                } else {
+                    broken.push(edge.clone());
+                }
+            }
+            if resolved && edge.target.as_deref() == Some(id) {
+                backlinks.push(edge);
+            }
+        }
+        sort_edges(&mut outgoing);
+        sort_edges(&mut backlinks);
+        sort_edges(&mut broken);
+        LinkSets {
+            outgoing,
+            backlinks,
+            broken,
+        }
+    }
+
+    /// Note id stored at a vault-relative path, when the index has that path.
+    pub fn id_at(&self, path: &str) -> Option<&str> {
+        self.notes
+            .iter()
+            .find(|note| note.path == path)
+            .map(|note| note.id.as_str())
+    }
+
+    fn edge(&self, note: &NoteRec, kind: &str, raw: &str) -> (LinkEdge, bool) {
+        let (target, resolved) = match self.resolve(raw) {
+            Ok(Resolved::Note { id, .. }) => (Some(id), true),
+            Ok(Resolved::File { .. }) => (None, true),
+            Err(ResolveError::Missing | ResolveError::Ambiguous { .. } | ResolveError::Outside) => {
+                (None, false)
+            }
+        };
+        (
+            LinkEdge {
+                kind: kind.to_string(),
+                raw: raw.to_string(),
+                source: note.id.clone(),
+                target,
+            },
+            resolved,
+        )
     }
 
     fn unique_ids(&self) -> BTreeSet<String> {
@@ -625,6 +740,43 @@ fn link_target(link: &str) -> String {
     without_heading.trim().to_string()
 }
 
+fn confine_user_path(root: &Path, query: &str) -> Result<String, ResolveError> {
+    let trimmed = query.trim();
+    let path = Path::new(trimmed);
+    if path.is_absolute() {
+        return match crate::vault::canonicalize_within(root, path) {
+            Ok((canon_root, canon)) => Ok(rel_of(&canon_root, &canon)),
+            Err(crate::vault::ConfineError::Outside(_)) => Err(ResolveError::Outside),
+            Err(crate::vault::ConfineError::Io(_)) => {
+                let canon_root = fs::canonicalize(root).map_err(|_| ResolveError::Outside)?;
+                if path.starts_with(&canon_root) {
+                    Ok(rel_of(&canon_root, path))
+                } else {
+                    Err(ResolveError::Outside)
+                }
+            }
+        };
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(ResolveError::Outside);
+    }
+    let joined = root.join(trimmed);
+    match crate::vault::canonicalize_within(root, &joined) {
+        Err(crate::vault::ConfineError::Outside(_)) => Err(ResolveError::Outside),
+        _ => Ok(trimmed.to_string()),
+    }
+}
+
+fn rel_of(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 fn safe_rel(target: &str) -> Option<String> {
     let text = nfc(target.trim().trim_start_matches("./")).replace('\\', "/");
     if text.is_empty() || text.starts_with('/') {
@@ -656,6 +808,17 @@ fn fold_key(value: &str) -> String {
 fn hex_sha256(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn sort_edges(edges: &mut [LinkEdge]) {
+    edges.sort_by(|left, right| {
+        (&left.kind, &left.raw, &left.source, &left.target).cmp(&(
+            &right.kind,
+            &right.raw,
+            &right.source,
+            &right.target,
+        ))
+    });
 }
 
 fn finding(code: FindingCode, message: impl Into<String>, path: String) -> Finding {

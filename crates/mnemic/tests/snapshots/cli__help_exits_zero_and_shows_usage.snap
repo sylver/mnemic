@@ -11,6 +11,8 @@ Commands:
   init    Scaffold a vault in the target directory
   log     Append one timeline line to a note
   search  Search parsed notes. Tokens are literal and combined with AND
+  get     Print one note by id, slug, alias, or vault-relative path
+  links   List outgoing links, backlinks, and broken links for one note
   help    Print this message or the help of the given subcommand(s)
 
 Options:

@@ -153,13 +153,18 @@ fn log_locked(
             LogError::Io(message)
         }
     })?;
-    let resolved = match index.resolve(note) {
+    let resolved = match index.resolve_argument(note) {
         Ok(resolved) => resolved,
         Err(ResolveError::Missing) => {
             return Err(LogError::NotFound(format!("no note matches {note}")));
         }
         Err(ResolveError::Ambiguous { candidates }) => {
             return Err(LogError::Ambiguous { candidates });
+        }
+        Err(ResolveError::Outside) => {
+            return Err(LogError::OutsideVault(format!(
+                "{note} is outside the vault"
+            )));
         }
     };
     let Resolved::Note { id, path } = resolved else {

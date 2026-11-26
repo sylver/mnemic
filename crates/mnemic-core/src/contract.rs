@@ -151,13 +151,21 @@ pub fn findings_envelope(
 }
 
 pub fn fatal_envelope(code: EnvelopeCode, message: impl Into<String>) -> CheckEnvelope {
+    fatal_envelope_with(code, message, BTreeMap::new())
+}
+
+pub fn fatal_envelope_with(
+    code: EnvelopeCode,
+    message: impl Into<String>,
+    details: BTreeMap<String, Value>,
+) -> CheckEnvelope {
     CheckEnvelope {
         ok: false,
         data: None,
         error: Some(ErrorObject {
             code,
             message: message.into(),
-            details: BTreeMap::new(),
+            details,
         }),
     }
 }
@@ -191,7 +199,11 @@ fn render_markdown() -> String {
          Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. \
          `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and \
          `NESTED_VAULT` are fatal. They are never entries in `data.errors`. \
-         `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`.\n\n\
+         `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. \
+         `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug \
+         or alias matches more than one note (`error.details.candidates` lists `id` and `path`), \
+         and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a \
+         missing slug both use `NOT_FOUND`.\n\n\
          ## Exit codes\n\n\
          | Code | Exit |\n\
          | --- | --- |\n",
@@ -236,11 +248,22 @@ fn render_markdown() -> String {
          | `BROKEN_LINK` | A wikilink, embed, typed link, or `supersedes` target does not resolve |\n\
          | `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path`, or `path` is not a regular file inside the vault |\n\
          | `AMBIGUOUS` | A link matches more than one note. `error.details.candidates` lists `path`, `link`, and `matches` |\n\n\
+         ## `get` and `links`\n\n\
+         `mnemic get --json` success is `ok: true`, `error: null`, and `data` with \
+         `id`, `path`, `slug`, `title`, `type`, `status`, `frontmatter`, `body`, \
+         `outgoing`, and `backlinks`. Exit 0.\n\n\
+         `mnemic links --json` success is `ok: true`, `error: null`, and `data` with \
+         `id`, `path`, `outgoing`, `backlinks`, and `broken`. Exit 0, including when \
+         `broken` is non-empty. `check` is the command that fails on a broken link.\n\n\
+         An edge has `kind` (`wikilink`, `embed`, or `frontmatter:<field>`), `raw` \
+         (the link text), `source` (the note id that contains the link), and `target` \
+         (the resolved note id, or null when the target is a file or the link did not resolve). \
+         Backlinks are computed. They are not written into Markdown.\n\n\
          The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n\n\
          ## `mnemic log`\n\n\
          `mnemic log <note> <text> --json` prints one JSON document. `<note>` is a path, id, slug, or alias, resolved inside the write lock.\n\n\
          Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noop`, `line`, and `heading_created`. `line` is the timeline item, including the `- ` marker. `noop` is true when that exact line is already on the page. `heading_created` is true when this call added `## Timeline`.\n\n\
-         `NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` means the resolved path canonicalizes outside the vault, including an outside symlink. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.\n\n\
+         `NOT_FOUND`, `AMBIGUOUS`, `USAGE`, `TIMELINE_DISABLED`, `TIMELINE_HEADING_AMBIGUOUS`, and `OUTSIDE_VAULT` are fatal for `log`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `OUTSIDE_VAULT` is the same code `get` and `links` return: a user path argument contains `..`, is an absolute path outside the vault, or canonicalizes outside the vault, including a symlink to an outside file. `VaultIndex::resolve_argument` is that check for all three. The check finding `AMBIGUOUS` is a different code from the fatal `AMBIGUOUS` on `log`.\n\n\
          ## Search\n\n\
          `mnemic search <query> [--type <type>] [--tag <tag>] [--since <date>] [--limit <n>] [--json]` \
          scans the parsed note-file set. There is no index command and no query language. \
