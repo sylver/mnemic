@@ -74,6 +74,25 @@ pub(crate) fn stage_temp(path: &Path, bytes: &[u8]) -> Result<Staged, Error> {
     Ok(Staged { tmp })
 }
 
+pub(crate) fn create_exclusive(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+    if is_symlink(path)? {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("refusing to replace symlink {}", path.display()),
+        )
+        .into());
+    }
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
 pub(crate) fn commit_temp(path: &Path, staged: &Staged) -> Result<(), Error> {
     if is_symlink(path)? {
         let _ = fs::remove_file(&staged.tmp);

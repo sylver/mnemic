@@ -31,6 +31,11 @@ impl WriteTxn {
         atomic::commit_temp(path, &staged)
     }
 
+    /// Create `path` with `O_EXCL` and write `bytes`. An existing path is left unchanged.
+    pub fn create_exclusive(&self, path: &Path, bytes: &[u8]) -> Result<(), Error> {
+        atomic::create_exclusive(path, bytes)
+    }
+
     /// Write and `fsync` the temp file, then exit the process before rename.
     ///
     /// Named crash seam for tests. Does not return.

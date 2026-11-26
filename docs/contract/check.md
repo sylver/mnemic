@@ -29,6 +29,11 @@ Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal cod
 | `TIMELINE_DISABLED` | 2 |
 | `TIMELINE_HEADING_AMBIGUOUS` | 2 |
 | `OUTSIDE_VAULT` | 2 |
+| `UNKNOWN_TYPE` | 2 |
+| `BAD_ID` | 2 |
+| `ID_EXISTS` | 2 |
+| `SLUG_COLLISION` | 2 |
+| `MISSING_TEMPLATE` | 2 |
 
 `LOCK_HELD` is reserved at exit 75. `check` does not take the vault lock.
 
@@ -84,3 +89,11 @@ An entry that is not a regular file inside the vault is not a note, so it is not
 `--json` success:
 
 `ok`, `data.query`, `data.hits[]` with `id`, `path`, `title`, `type`, `snippet`, `section`, `score`, and `error: null`.
+
+## `mnemic new`
+
+`mnemic new <type> <title> [--id <ulid>] [--as <actor>] [--date <ISO-date>] --json` prints one JSON document.
+
+Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, and `noop`. `path` is vault-relative. `noop` is true only when that `id` is already the note at that path. The file is not rewritten.
+
+`UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS`, `SLUG_COLLISION`, `MISSING_TEMPLATE`, `USAGE`, and `OUTSIDE_VAULT` are fatal for `new`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `BAD_ID` means `--id` is not a 26-character Crockford ULID. `ID_EXISTS` means that id is already a note at a different path. `SLUG_COLLISION` means the new filename slug equals another note's slug or alias after NFC case-folding. `MISSING_TEMPLATE` means the type has no body template. `USAGE` includes an empty slug and a missing author. The author message names both `--as` and `actor`.

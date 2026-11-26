@@ -10,6 +10,7 @@ mod frontmatter;
 mod index;
 mod init;
 mod log;
+mod new;
 mod pack;
 mod read;
 mod search;
@@ -29,6 +30,7 @@ pub use frontmatter::{parse_note, ByteSpan, FrontmatterError, KeySpan, ParsedNot
 pub use index::{index_vault, IndexedNote, LinkEdge, LinkSets, ResolveError, Resolved, VaultIndex};
 pub use init::{init_vault, InitData, InitError, InitReport, InitRequest, InitSuccess};
 pub use log::{log_note, LogData, LogError, LogRequest, LogResult, LogSuccess};
+pub use new::{create_note, slugify, NewData, NewError, NewRequest, NewResult, NewSuccess};
 pub use pack::{
     core_pack, core_template, load_overlay_dir, load_pack, resolve_pack, template_body, FieldDef,
     FieldKind, Pack, PackError, TypeDef,
@@ -39,7 +41,7 @@ pub use search::{
 };
 pub use ulid::{is_ulid, UlidGenerator};
 pub use vault::{
-    load_vault, open_vault, parse_vault_config, Vault, VaultConfig, VaultError,
+    load_vault, open_config, open_vault, parse_vault_config, Vault, VaultConfig, VaultError,
     SUPPORTED_VAULT_SCHEMA_VERSION,
 };
 

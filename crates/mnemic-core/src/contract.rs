@@ -100,6 +100,16 @@ pub enum EnvelopeCode {
     TimelineHeadingAmbiguous,
     #[serde(rename = "OUTSIDE_VAULT")]
     OutsideVault,
+    #[serde(rename = "UNKNOWN_TYPE")]
+    UnknownType,
+    #[serde(rename = "BAD_ID")]
+    BadId,
+    #[serde(rename = "ID_EXISTS")]
+    IdExists,
+    #[serde(rename = "SLUG_COLLISION")]
+    SlugCollision,
+    #[serde(rename = "MISSING_TEMPLATE")]
+    MissingTemplate,
 }
 
 pub fn exit_code(code: EnvelopeCode) -> i32 {
@@ -116,7 +126,12 @@ pub fn exit_code(code: EnvelopeCode) -> i32 {
         | EnvelopeCode::Ambiguous
         | EnvelopeCode::TimelineDisabled
         | EnvelopeCode::TimelineHeadingAmbiguous
-        | EnvelopeCode::OutsideVault => 2,
+        | EnvelopeCode::OutsideVault
+        | EnvelopeCode::UnknownType
+        | EnvelopeCode::BadId
+        | EnvelopeCode::IdExists
+        | EnvelopeCode::SlugCollision
+        | EnvelopeCode::MissingTemplate => 2,
     }
 }
 
@@ -222,6 +237,11 @@ fn render_markdown() -> String {
         EnvelopeCode::TimelineDisabled,
         EnvelopeCode::TimelineHeadingAmbiguous,
         EnvelopeCode::OutsideVault,
+        EnvelopeCode::UnknownType,
+        EnvelopeCode::BadId,
+        EnvelopeCode::IdExists,
+        EnvelopeCode::SlugCollision,
+        EnvelopeCode::MissingTemplate,
     ];
     for code in codes {
         let name = serde_json::to_string(&code).unwrap_or_else(|_| "\"?\"".to_string());
@@ -283,7 +303,11 @@ fn render_markdown() -> String {
          `search` also returns `VAULT_NOT_FOUND` and `IO`. It does not return an FTS syntax error.\n\n\
          `--json` success:\n\n\
          `ok`, `data.query`, `data.hits[]` with `id`, `path`, `title`, `type`, `snippet`, \
-         `section`, `score`, and `error: null`.\n",
+         `section`, `score`, and `error: null`.\n\n\
+         ## `mnemic new`\n\n\
+         `mnemic new <type> <title> [--id <ulid>] [--as <actor>] [--date <ISO-date>] --json` prints one JSON document.\n\n\
+         Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, and `noop`. `path` is vault-relative. `noop` is true only when that `id` is already the note at that path. The file is not rewritten.\n\n\
+         `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS`, `SLUG_COLLISION`, `MISSING_TEMPLATE`, `USAGE`, and `OUTSIDE_VAULT` are fatal for `new`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `BAD_ID` means `--id` is not a 26-character Crockford ULID. `ID_EXISTS` means that id is already a note at a different path. `SLUG_COLLISION` means the new filename slug equals another note's slug or alias after NFC case-folding. `MISSING_TEMPLATE` means the type has no body template. `USAGE` includes an empty slug and a missing author. The author message names both `--as` and `actor`.\n",
     );
     out
 }

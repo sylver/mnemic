@@ -5,10 +5,11 @@ use clap::{Parser, Subcommand};
 use std::collections::BTreeMap;
 
 use mnemic_core::{
-    exit_code, fatal_envelope, fatal_envelope_with, findings_envelope, init_vault, log_note,
-    read_note, search_vault, success_envelope, to_json, CheckEnvelope, CheckFatal, EnvelopeCode,
-    InitData, InitError, InitRequest, InitSuccess, LogError, LogRequest, NoteView, ReadError,
-    SearchData, SearchEnvelope, SearchError, SearchRequest, SystemClock, VaultError,
+    create_note, exit_code, fatal_envelope, fatal_envelope_with, findings_envelope, init_vault,
+    log_note, read_note, search_vault, success_envelope, to_json, CheckEnvelope, CheckFatal,
+    EnvelopeCode, InitData, InitError, InitRequest, InitSuccess, LogError, LogRequest, NewError,
+    NewRequest, NoteView, ReadError, SearchData, SearchEnvelope, SearchError, SearchRequest,
+    SystemClock, UlidGenerator, VaultError,
 };
 use serde_json::{json, Value};
 
@@ -102,6 +103,28 @@ enum Command {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Create a note from a type template.
+    New {
+        /// Type name in the loaded pack.
+        type_name: String,
+        /// Note title. The filename slug is derived from it.
+        title: String,
+        /// Crockford ULID. Generated when omitted.
+        #[arg(long)]
+        id: Option<String>,
+        /// Actor stored in `created_by`. Overrides `actor` in `mnemic.toml`.
+        #[arg(long = "as")]
+        actor: Option<String>,
+        /// Journal `date` as `YYYY-MM-DD`. Defaults to the process local date.
+        #[arg(long)]
+        date: Option<String>,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
 }
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -125,7 +148,88 @@ fn main() -> ExitCode {
         } => search(query, type_name, tag, since, limit, json, vault),
         Command::Get { query, json, vault } => show(query, json, vault, false),
         Command::Links { note, json, vault } => show(note, json, vault, true),
+        Command::New {
+            type_name,
+            title,
+            id,
+            actor,
+            date,
+            json,
+            vault,
+        } => new_note(type_name, title, id, actor, date, json, vault),
     }
+}
+
+fn new_note(
+    type_name: String,
+    title: String,
+    id: Option<String>,
+    actor: Option<String>,
+    date: Option<String>,
+    json: bool,
+    vault: Option<PathBuf>,
+) -> ExitCode {
+    let start = vault.unwrap_or_else(|| PathBuf::from("."));
+    let mut ids = UlidGenerator::from_seed(random_seed());
+    let result = create_note(NewRequest {
+        vault: &start,
+        type_name: &type_name,
+        title: &title,
+        id: id.as_deref(),
+        actor: actor.as_deref(),
+        date: date.as_deref(),
+        clock: &SystemClock,
+        ids: &mut ids,
+        lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,
+    });
+    match result {
+        Ok(result) => {
+            if json {
+                match serde_json::to_string_pretty(&result.success()) {
+                    Ok(text) => println!("{text}"),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else if result.noop {
+                println!("noop {} {}", result.path, result.id);
+            } else {
+                println!("{} {}", result.path, result.id);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            let (code, message) = fatal_from_new(err);
+            emit(json, fatal_envelope(code, message), exit_code(code))
+        }
+    }
+}
+
+fn fatal_from_new(err: NewError) -> (EnvelopeCode, String) {
+    match err {
+        NewError::Usage(message) => (EnvelopeCode::Usage, message),
+        NewError::UnknownType(message) => (EnvelopeCode::UnknownType, message),
+        NewError::BadId(message) => (EnvelopeCode::BadId, message),
+        NewError::IdExists(message) => (EnvelopeCode::IdExists, message),
+        NewError::SlugCollision(message) => (EnvelopeCode::SlugCollision, message),
+        NewError::MissingTemplate(message) => (EnvelopeCode::MissingTemplate, message),
+        NewError::OutsideVault(message) => (EnvelopeCode::OutsideVault, message),
+        NewError::LockHeld { .. } => (EnvelopeCode::LockHeld, err.to_string()),
+        NewError::Io(message) => (EnvelopeCode::Io, message),
+        NewError::Vault(message) => fatal_from_vault_message(&message),
+    }
+}
+
+fn random_seed() -> u64 {
+    use std::io::Read;
+    let mut bytes = [0u8; 8];
+    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
+        if file.read_exact(&mut bytes).is_ok() {
+            return u64::from_ne_bytes(bytes);
+        }
+    }
+    u64::from(std::process::id())
 }
 
 fn log(note: String, text: String, json: bool, vault: Option<PathBuf>) -> ExitCode {
@@ -538,5 +642,10 @@ fn error_name(code: EnvelopeCode) -> &'static str {
         EnvelopeCode::TimelineDisabled => "TIMELINE_DISABLED",
         EnvelopeCode::TimelineHeadingAmbiguous => "TIMELINE_HEADING_AMBIGUOUS",
         EnvelopeCode::OutsideVault => "OUTSIDE_VAULT",
+        EnvelopeCode::UnknownType => "UNKNOWN_TYPE",
+        EnvelopeCode::BadId => "BAD_ID",
+        EnvelopeCode::IdExists => "ID_EXISTS",
+        EnvelopeCode::SlugCollision => "SLUG_COLLISION",
+        EnvelopeCode::MissingTemplate => "MISSING_TEMPLATE",
     }
 }
