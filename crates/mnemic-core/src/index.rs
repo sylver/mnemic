@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::thread;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -85,22 +86,7 @@ impl VaultIndex {
         let mut files = Vec::new();
         collect_notes(&root, &root, &mut files)?;
         files.sort();
-        let mut notes = Vec::new();
-        for file in files {
-            if !crate::check::regular_file_inside(&root, &file) {
-                continue;
-            }
-            let text = fs::read(&file).map_err(|err| CheckFatal::Io(err.to_string()))?;
-            let Ok(source) = String::from_utf8(text) else {
-                continue;
-            };
-            let Ok(parsed) = frontmatter::parse_note(&source) else {
-                continue;
-            };
-            if let Some(note) = note_rec(&root, &file, &parsed) {
-                notes.push(note);
-            }
-        }
+        let notes = read_notes(&root, &files)?;
         Ok(Self::from_notes(root, notes))
     }
 
@@ -445,6 +431,55 @@ impl VaultIndex {
             .map(|(id, _)| id.clone())
             .collect()
     }
+}
+
+fn read_notes(root: &Path, files: &[PathBuf]) -> Result<Vec<NoteRec>, CheckFatal> {
+    let workers = thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1)
+        .clamp(1, 8);
+    if files.len() < 64 || workers == 1 {
+        return files.iter().try_fold(Vec::new(), |mut notes, file| {
+            if let Some(note) = read_note(root, file)? {
+                notes.push(note);
+            }
+            Ok(notes)
+        });
+    }
+    let chunk = files.len().div_ceil(workers);
+    thread::scope(|scope| {
+        let mut joins = Vec::new();
+        for group in files.chunks(chunk) {
+            joins.push(scope.spawn(move || {
+                let mut notes = Vec::with_capacity(group.len());
+                for file in group {
+                    if let Some(note) = read_note(root, file)? {
+                        notes.push(note);
+                    }
+                }
+                Ok(notes)
+            }));
+        }
+        let mut notes = Vec::with_capacity(files.len());
+        for join in joins {
+            let group = join
+                .join()
+                .map_err(|_| CheckFatal::Io("index worker panicked".to_string()))??;
+            notes.extend(group);
+        }
+        Ok(notes)
+    })
+}
+
+fn read_note(root: &Path, file: &Path) -> Result<Option<NoteRec>, CheckFatal> {
+    let text = fs::read(file).map_err(|err| CheckFatal::Io(err.to_string()))?;
+    let Ok(source) = String::from_utf8(text) else {
+        return Ok(None);
+    };
+    let Ok(parsed) = frontmatter::parse_note(&source) else {
+        return Ok(None);
+    };
+    Ok(note_rec(root, file, &parsed))
 }
 
 fn note_rec(root: &Path, file: &Path, parsed: &ParsedNote) -> Option<NoteRec> {
