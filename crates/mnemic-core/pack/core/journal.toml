@@ -1,0 +1,16 @@
+schema_version = 1
+folder = "journal"
+timeline = true
+
+[state]
+values = ["open", "closed"]
+
+[[field]]
+name = "date"
+type = "date"
+required = true
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false

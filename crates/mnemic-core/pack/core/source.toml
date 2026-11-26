@@ -1,0 +1,26 @@
+schema_version = 1
+folder = "sources"
+timeline = false
+
+[state]
+values = ["unread", "read", "archived"]
+
+[[field]]
+name = "path"
+type = "string"
+required = false
+
+[[field]]
+name = "url"
+type = "string"
+required = false
+
+[[field]]
+name = "sha256"
+type = "string"
+required = false
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false

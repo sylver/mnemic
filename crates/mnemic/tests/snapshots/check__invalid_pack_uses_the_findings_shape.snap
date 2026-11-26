@@ -1,0 +1,22 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "INVALID_PACK",
+        "message": "pack person: TOML parse error at line 1, column 11\n  |\n1 | folder = [\n  |           ^\nunclosed array, expected `]`\n",
+        "path": "pack"
+      }
+    ],
+    "warnings": []
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 1 error",
+    "details": {}
+  }
+}

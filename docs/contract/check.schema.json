@@ -111,7 +111,11 @@
       "enum": [
         "BAD_FRONTMATTER",
         "BAD_ID",
-        "MISSING_FIELD"
+        "MISSING_FIELD",
+        "UNKNOWN_TYPE",
+        "ALIAS_CONTACT",
+        "SCHEMA_VERSION_AHEAD",
+        "INVALID_PACK"
       ]
     }
   }

@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::contract::{Finding, FindingCode};
 use crate::frontmatter::{self, FrontmatterError, ParsedNote};
+use crate::pack::{self, Pack, PackError, TypeDef};
 use crate::ulid::is_ulid;
 use crate::vault::Vault;
 
@@ -46,6 +47,10 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal
         collect_notes(&root, &start, &mut files)?;
     }
     files.sort();
+    let pack = match pack::core_pack() {
+        Ok(pack) => pack,
+        Err(err) => return Ok(vec![invalid_pack_finding(&err)]),
+    };
     let mut findings = Vec::new();
     for file in files {
         let rel = rel_path(&root, &file);
@@ -62,7 +67,11 @@ pub fn check_path(vault: &Vault, path: &Path) -> Result<Vec<Finding>, CheckFatal
             }
         };
         match frontmatter::parse_note(&source) {
-            Ok(note) => findings.extend(core_findings(&note, rel)),
+            Ok(note) => {
+                let mut note_findings = core_findings(&note, rel.clone());
+                note_findings.extend(type_findings(&note, &rel, &pack));
+                findings.extend(note_findings);
+            }
             Err(err) => findings.push(frontmatter_finding(err, rel)),
         }
     }
@@ -158,6 +167,143 @@ fn core_findings(note: &ParsedNote, path: String) -> Vec<Finding> {
     findings
 }
 
+fn type_findings(note: &ParsedNote, path: &str, pack: &Pack) -> Vec<Finding> {
+    let Some(type_name) = note.values.get("type").and_then(Value::as_str) else {
+        return Vec::new();
+    };
+    if type_name.is_empty() {
+        return Vec::new();
+    }
+    let Some(def) = pack.get(type_name) else {
+        return vec![finding(
+            FindingCode::UnknownType,
+            format!("unknown type {type_name}"),
+            path.to_string(),
+        )];
+    };
+    let mut findings = Vec::new();
+    if let Some(version) = note.values.get("schema_version").and_then(Value::as_i64) {
+        if version > i64::try_from(def.schema_version).unwrap_or(i64::MAX) {
+            findings.push(finding(
+                FindingCode::SchemaVersionAhead,
+                format!(
+                    "schema_version {version} is ahead of {type_name} {}",
+                    def.schema_version
+                ),
+                path.to_string(),
+            ));
+        }
+    }
+    findings.extend(required_type_fields(note, path, def));
+    if let Some(message) = contact_alias(note) {
+        findings.push(finding(
+            FindingCode::AliasContact,
+            message,
+            path.to_string(),
+        ));
+    }
+    findings
+}
+
+fn required_type_fields(note: &ParsedNote, path: &str, def: &TypeDef) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    if def.name == "source" {
+        let path_ok = present_string(note, "path");
+        let url_ok = present_string(note, "url");
+        if !path_ok && !url_ok {
+            findings.push(finding(
+                FindingCode::MissingField,
+                "missing path or url",
+                path.to_string(),
+            ));
+        }
+    }
+    for field in &def.fields {
+        if field.required && !note.values.contains_key(&field.name) {
+            findings.push(finding(
+                FindingCode::MissingField,
+                format!("missing {}", field.name),
+                path.to_string(),
+            ));
+        }
+    }
+    findings
+}
+
+fn present_string(note: &ParsedNote, key: &str) -> bool {
+    note.values
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(|text| !text.is_empty())
+}
+
+fn contact_alias(note: &ParsedNote) -> Option<String> {
+    let values = match note.values.get("aliases")? {
+        Value::Array(items) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+        Value::String(text) => vec![text.clone()],
+        _ => return None,
+    };
+    values.into_iter().find_map(|alias| {
+        if is_email(&alias) {
+            Some(format!("alias {alias} is an email"))
+        } else if is_phone(&alias) {
+            Some(format!("alias {alias} is a phone number"))
+        } else {
+            None
+        }
+    })
+}
+
+fn is_email(value: &str) -> bool {
+    let (local, domain) = match value.split_once('@') {
+        Some(parts) => parts,
+        None => return false,
+    };
+    !local.is_empty()
+        && !domain.is_empty()
+        && !local.contains(char::is_whitespace)
+        && !domain.contains(char::is_whitespace)
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && value.split('@').nth(2).is_none()
+}
+
+fn is_phone(value: &str) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+    if value.contains('+') && !value.starts_with('+') {
+        return false;
+    }
+    if !value
+        .chars()
+        .all(|ch| ch.is_ascii_digit() || matches!(ch, '+' | '-' | ' ' | '(' | ')' | '.'))
+    {
+        return false;
+    }
+    let digits = value.chars().filter(|ch| ch.is_ascii_digit()).count();
+    if !(7..=15).contains(&digits) {
+        return false;
+    }
+    let separators: Vec<char> = value
+        .chars()
+        .filter(|ch| !ch.is_ascii_digit() && *ch != '+')
+        .collect();
+    value.starts_with('+') || separators.iter().any(|ch| *ch != '.')
+}
+
+pub fn invalid_pack_finding(err: &PackError) -> Finding {
+    finding(
+        FindingCode::InvalidPack,
+        err.to_string(),
+        "pack".to_string(),
+    )
+}
+
 fn is_rfc3339(value: &Value) -> bool {
     value
         .as_str()
@@ -247,5 +393,19 @@ mod tests {
             Path::new("/vault/log/.welcome.mnemic-tmp-1.md")
         ));
         assert!(!is_note(root, Path::new("/vault/sources/raw/blob.md")));
+    }
+
+    #[test]
+    fn phone_shape_rejects_dotted_numbers_and_email_allows_localhost() {
+        assert!(!is_phone("192.168.0.1"));
+        assert!(!is_phone("2026.11.25"));
+        assert!(!is_phone("order 1234567"));
+        assert!(is_phone("+1 415 555 0134"));
+        assert!(is_phone("415-555-0134"));
+        assert!(is_email("user@localhost"));
+        assert!(is_email("ada@example.com"));
+        assert!(!is_email("not-an-email@"));
+        assert!(!is_email("mention @sylver"));
+        assert!(!is_email("order 1234567"));
     }
 }

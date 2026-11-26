@@ -1,0 +1,16 @@
+schema_version = 1
+folder = "projects"
+timeline = false
+
+[state]
+values = ["active", "paused", "done"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false
+
+[[field]]
+name = "goal"
+type = "string"
+required = false

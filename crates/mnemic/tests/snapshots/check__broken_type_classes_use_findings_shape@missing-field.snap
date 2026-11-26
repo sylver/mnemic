@@ -1,0 +1,27 @@
+---
+source: crates/mnemic/tests/check.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": {
+    "errors": [
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing date",
+        "path": "missing-field/journal.md"
+      },
+      {
+        "code": "MISSING_FIELD",
+        "message": "missing path or url",
+        "path": "missing-field/source.md"
+      }
+    ],
+    "warnings": []
+  },
+  "error": {
+    "code": "CHECK_FAILED",
+    "message": "check found 2 errors",
+    "details": {}
+  }
+}

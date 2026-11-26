@@ -1,0 +1,16 @@
+schema_version = 1
+folder = "decisions"
+timeline = true
+
+[state]
+values = ["proposed", "accepted", "superseded"]
+
+[[field]]
+name = "aliases"
+type = "strings"
+required = false
+
+[[field]]
+name = "date"
+type = "date"
+required = false
