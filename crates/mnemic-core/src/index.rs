@@ -297,11 +297,9 @@ impl VaultIndex {
                 format!("{kind} {link} does not resolve"),
                 path.to_string(),
             )),
-            Err(ResolveError::Ambiguous { candidates }) => findings.push(finding(
-                FindingCode::Ambiguous,
-                format!("{kind} {link} matches {}", candidates.join(", ")),
-                path.to_string(),
-            )),
+            Err(ResolveError::Ambiguous { candidates }) => {
+                findings.push(ambiguous_finding(path, kind, link, candidates))
+            }
         }
     }
 
@@ -377,7 +375,7 @@ impl VaultIndex {
             if expected.is_empty() {
                 continue;
             }
-            let actual = safe_rel(raw).and_then(|rel| self.read_hash(&rel));
+            let actual = self.read_hash(raw);
             let drifted = !actual.is_some_and(|hash| hash.eq_ignore_ascii_case(expected));
             if drifted {
                 findings.push(finding(
@@ -390,8 +388,9 @@ impl VaultIndex {
         findings
     }
 
-    fn read_hash(&self, rel: &str) -> Option<String> {
-        let bytes = fs::read(self.root.join(rel)).ok()?;
+    fn read_hash(&self, raw: &str) -> Option<String> {
+        let path = confined_file(&self.root, raw)?;
+        let bytes = fs::read(path).ok()?;
         Some(hex_sha256(&bytes))
     }
 
@@ -491,20 +490,13 @@ fn candidate_details(findings: &[Finding]) -> BTreeMap<String, Value> {
         if item.code != FindingCode::Ambiguous {
             continue;
         }
-        let Some(matches) = item.message.split(" matches ").nth(1) else {
+        let (Some(link), Some(matches)) = (&item.link, &item.matches) else {
             continue;
         };
-        let link = item
-            .message
-            .split(" matches ")
-            .next()
-            .and_then(|head| head.split(' ').nth(1))
-            .unwrap_or("");
-        let paths: Vec<&str> = matches.split(", ").collect();
         rows.push(json!({
             "path": item.path,
             "link": link,
-            "matches": paths,
+            "matches": matches,
         }));
     }
     let mut details = BTreeMap::new();
@@ -539,7 +531,7 @@ fn link_target(link: &str) -> String {
 }
 
 fn safe_rel(target: &str) -> Option<String> {
-    let text = nfc(target.trim().trim_start_matches("./"));
+    let text = nfc(target.trim().trim_start_matches("./")).replace('\\', "/");
     if text.is_empty() || text.starts_with('/') {
         return None;
     }
@@ -555,7 +547,25 @@ fn safe_rel(target: &str) -> Option<String> {
     }) {
         return None;
     }
-    Some(text.replace('\\', "/"))
+    Some(text)
+}
+
+/// A regular file whose canonical path stays inside the canonical vault root.
+/// `..`, an absolute path, a symlink that leaves the vault, and anything that
+/// is not a regular file return `None`. The outside file is not read.
+fn confined_file(root: &Path, target: &str) -> Option<PathBuf> {
+    let rel = safe_rel(target)?;
+    let joined = root.join(rel);
+    fs::symlink_metadata(&joined).ok()?;
+    let canon_root = fs::canonicalize(root).ok()?;
+    let canon = fs::canonicalize(&joined).ok()?;
+    if canon == canon_root || !canon.starts_with(&canon_root) {
+        return None;
+    }
+    if !fs::symlink_metadata(&canon).ok()?.file_type().is_file() {
+        return None;
+    }
+    Some(canon)
 }
 
 fn nfc(value: &str) -> String {
@@ -576,6 +586,18 @@ fn finding(code: FindingCode, message: impl Into<String>, path: String) -> Findi
         code,
         message: message.into(),
         path,
+        link: None,
+        matches: None,
+    }
+}
+
+fn ambiguous_finding(path: &str, kind: &str, link: &str, matches: Vec<String>) -> Finding {
+    Finding {
+        code: FindingCode::Ambiguous,
+        message: format!("{kind} {link} matches {}", matches.join(", ")),
+        path: path.to_string(),
+        link: Some(link.to_string()),
+        matches: Some(matches),
     }
 }
 
@@ -643,8 +665,12 @@ fn scan_line(line: &str, out: &mut Vec<(bool, String)>) {
         let embed = chars[index] == '!'
             && index + 2 < chars.len()
             && chars[index + 1] == '['
-            && chars[index + 2] == '[';
-        let plain = chars[index] == '[' && index + 1 < chars.len() && chars[index + 1] == '[';
+            && chars[index + 2] == '['
+            && !bracket_escaped(&chars, index + 1);
+        let plain = chars[index] == '['
+            && index + 1 < chars.len()
+            && chars[index + 1] == '['
+            && !bracket_escaped(&chars, index);
         if embed || plain {
             let content = if embed { index + 3 } else { index + 2 };
             if let Some(end) = find_close(&chars, content) {
@@ -655,6 +681,16 @@ fn scan_line(line: &str, out: &mut Vec<(bool, String)>) {
         }
         index += 1;
     }
+}
+
+fn bracket_escaped(chars: &[char], index: usize) -> bool {
+    let mut count = 0;
+    let mut cursor = index;
+    while cursor > 0 && chars[cursor - 1] == '\\' {
+        count += 1;
+        cursor -= 1;
+    }
+    count % 2 == 1
 }
 
 fn find_run(chars: &[char], from: usize, width: usize) -> Option<usize> {

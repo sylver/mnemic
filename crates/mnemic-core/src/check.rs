@@ -339,6 +339,8 @@ fn finding(code: FindingCode, message: impl Into<String>, path: String) -> Findi
         code,
         message: message.into(),
         path,
+        link: None,
+        matches: None,
     }
 }
 

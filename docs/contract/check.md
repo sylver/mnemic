@@ -45,7 +45,7 @@ Unexpected I/O uses `IO` and exit 1. Every other fatal code and `CHECK_FAILED` u
 | `SUPERSEDED_WITHOUT_INCOMING` | `status` is `superseded` and no other note points at it with `supersedes` |
 | `SUPERSEDES_CYCLE` | `supersedes` links form a cycle |
 | `BROKEN_LINK` | A wikilink, embed, typed link, or `supersedes` target does not resolve |
-| `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path` |
+| `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path`, or `path` is not a regular file inside the vault |
 | `AMBIGUOUS` | A link matches more than one note. `error.details.candidates` lists `path`, `link`, and `matches` |
 
 The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).

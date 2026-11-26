@@ -9,7 +9,12 @@ expression: stdout
       {
         "code": "AMBIGUOUS",
         "message": "wikilink sam matches ambiguous/orgs/sam.md, ambiguous/people/sam.md",
-        "path": "ambiguous/notes/link.md"
+        "path": "ambiguous/notes/link.md",
+        "link": "sam",
+        "matches": [
+          "ambiguous/orgs/sam.md",
+          "ambiguous/people/sam.md"
+        ]
       }
     ],
     "warnings": []

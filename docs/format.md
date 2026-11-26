@@ -77,13 +77,13 @@ Resolution order:
 
 Slug and alias matching is case-insensitive after NFC normalization. The resolver does not guess. Two filename slugs such as `people/sam.md` and `orgs/sam.md` may both exist. A bare `[[sam]]` that hits more than one is `AMBIGUOUS`. `error.details.candidates` lists `path`, `link`, and `matches`. `[[people/sam]]` is a path first, then falls through the rest of the order.
 
-A wikilink is `[[target]]`, `[[target|label]]`, `[[target#heading]]`, or an embed `![[target]]`. `[[target#heading]]` does not require the heading to exist. `![[image.png]]` and any link to a non-`.md` file are valid when that file exists, and `BROKEN_LINK` when it does not. Wikilinks inside fenced code or inline code are not links.
+A wikilink is `[[target]]`, `[[target|label]]`, `[[target#heading]]`, or an embed `![[target]]`. `[[target#heading]]` does not require the heading to exist. `![[image.png]]` and any link to a non-`.md` file are valid when that file exists, and `BROKEN_LINK` when it does not. Wikilinks inside fenced code or inline code are not links. A `[` preceded by an odd number of backslashes does not open a wikilink, so `\[\[x]]` is not a link.
 
 Typed frontmatter fields with a pack `target`, and `supersedes`, are edges through the same resolver. A target that does not resolve is `BROKEN_LINK`.
 
 ## Raw bytes
 
-A `source` note may set `path` to a vault-relative raw file and `sha256` to the hex digest of that file. When both are set, `check` hashes the file. A mismatch or a missing file is `SHA256_DRIFT`. `sha256` is not required for a source note to pass.
+A `source` note may set `path` to a vault-relative raw file and `sha256` to the hex digest of that file. When both are set, `check` hashes the file. A mismatch, a missing file, or a path that is not a regular file inside the vault is `SHA256_DRIFT`. `check` does not read a file outside the vault. A symlink is hashed only when its canonical path is a regular file inside the vault. `sha256` is not required for a source note to pass.
 
 ## Type pack
 

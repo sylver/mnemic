@@ -23,6 +23,12 @@ pub struct Finding {
     pub code: FindingCode,
     pub message: String,
     pub path: String,
+    /// Wikilink or typed-link text when `code` is `AMBIGUOUS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
+    /// Sorted candidate paths when `code` is `AMBIGUOUS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matches: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -208,7 +214,7 @@ fn render_markdown() -> String {
          | `SUPERSEDED_WITHOUT_INCOMING` | `status` is `superseded` and no other note points at it with `supersedes` |\n\
          | `SUPERSEDES_CYCLE` | `supersedes` links form a cycle |\n\
          | `BROKEN_LINK` | A wikilink, embed, typed link, or `supersedes` target does not resolve |\n\
-         | `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path` |\n\
+         | `SHA256_DRIFT` | A source note `sha256` does not match the raw file at `path`, or `path` is not a regular file inside the vault |\n\
          | `AMBIGUOUS` | A link matches more than one note. `error.details.candidates` lists `path`, `link`, and `matches` |\n\n\
          The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).\n",
     );
