@@ -252,7 +252,7 @@ fn a_symlink_outside_the_vault_is_refused() {
     );
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(json["error"]["code"], "OUTSIDE_VAULT");
+    assert_eq!(json["error"]["code"], "NOT_FOUND");
     assert_eq!(fs::read(&outside_note).unwrap(), before);
 }
 
@@ -291,6 +291,171 @@ fn twenty_processes_do_not_drop_an_ok_line() {
     for line in ok_lines {
         assert!(body.contains(&line), "missing {line}\n{body}");
     }
+}
+
+#[test]
+fn a_non_grammar_bullet_does_not_stop_date_order() {
+    let vault = copy_vault();
+    let path = vault.join("people/ada.md");
+    let body = fs::read_to_string(&path).unwrap().replace(
+        "- 2026-11-01 | archive | kept\n",
+        "- not grammar\n- 2026-11-01 | archive | kept\n",
+    );
+    fs::write(&path, body).unwrap();
+    let output = run(
+        &vault,
+        &["log", "ada", "2026-10-01 | old | older", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let written = fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        bullets_after(&written, "## Timeline"),
+        vec![
+            "- not grammar",
+            "- 2026-11-01 | archive | kept",
+            "- 2026-10-01 | old | older",
+        ]
+    );
+
+    let between = written.replace(
+        "- 2026-11-01 | archive | kept\n- 2026-10-01 | old | older\n",
+        "- 2026-11-01 | archive | kept\n- not grammar\n- 2026-09-01 | archive | early\n",
+    );
+    fs::write(&path, between).unwrap();
+    let middle = run(
+        &vault,
+        &["log", "ada", "2026-10-01 | old | middle", "--json"],
+    );
+    assert_eq!(middle.status.code(), Some(0), "{}", stderr(&middle));
+    let written = fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        bullets_after(&written, "## Timeline"),
+        vec![
+            "- not grammar",
+            "- 2026-11-01 | archive | kept",
+            "- not grammar",
+            "- 2026-10-01 | old | middle",
+            "- 2026-09-01 | archive | early",
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_directory_symlink_outside_the_vault_is_not_indexed() {
+    use std::os::unix::fs::symlink;
+
+    let vault = copy_vault();
+    let outside = tempfile::tempdir().unwrap();
+    let outside_note = outside.path().join("ada.md");
+    fs::copy(vault.join("people/ada.md"), &outside_note).unwrap();
+    let before = fs::read(&outside_note).unwrap();
+    symlink(outside.path(), vault.join("escape")).unwrap();
+
+    let index = mnemic_core::index_vault(&vault).expect("index");
+    match index.resolve("ada") {
+        Ok(mnemic_core::Resolved::Note { path, .. }) => {
+            assert_eq!(path, "people/ada.md");
+        }
+        other => panic!("expected the real note, got {other:?}"),
+    }
+
+    let output = run(
+        &vault,
+        &["log", "ada", "2026-10-01 | old | older", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(fs::read(&outside_note).unwrap(), before);
+    assert!(fs::read_to_string(vault.join("people/ada.md"))
+        .unwrap()
+        .contains("- 2026-10-01 | old | older"));
+
+    let mut check = assert_cmd::Command::cargo_bin("mnemic").expect("bin");
+    check.current_dir(&vault);
+    let check = check.args(["check", "--json"]).output().expect("check");
+    let stdout = String::from_utf8(check.stdout).unwrap();
+    assert_eq!(check.status.code(), Some(0), "{stdout}");
+    assert!(!stdout.contains("DUPLICATE_ID"), "{stdout}");
+    assert!(!stdout.contains("escape/ada.md"), "{stdout}");
+    assert!(!stdout.contains("escape"), "{stdout}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_behind_a_file_symlink_is_not_opened() {
+    let vault = copy_vault();
+    let fifo = vault.join("pipe.fifo");
+    mkfifo(&fifo);
+    std::os::unix::fs::symlink(&fifo, vault.join("people/linked.md")).unwrap();
+    assert_scan_finishes(&vault);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_inside_an_outside_directory_symlink_is_not_opened() {
+    let vault = copy_vault();
+    let outside = tempfile::tempdir().unwrap();
+    mkfifo(&outside.path().join("trap.md"));
+    std::os::unix::fs::symlink(outside.path(), vault.join("escape")).unwrap();
+    assert_scan_finishes(&vault);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_in_the_vault_is_not_opened() {
+    let vault = copy_vault();
+    mkfifo(&vault.join("people/direct.md"));
+    assert_scan_finishes(&vault);
+}
+
+#[cfg(unix)]
+fn mkfifo(path: &Path) {
+    let status = Command::new("mkfifo").arg(path).status().expect("mkfifo");
+    assert!(status.success(), "mkfifo {path:?}");
+}
+
+#[cfg(unix)]
+fn assert_scan_finishes(vault: &Path) {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let limit = Duration::from_secs(2);
+    let indexed = vault.to_path_buf();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let loaded = mnemic_core::index_vault(&indexed);
+        let _ = tx.send(loaded.map(|_| ()));
+    });
+    let loaded = rx.recv_timeout(limit).expect("index load hung");
+    loaded.expect("index");
+
+    let child = Command::new(cargo_bin("mnemic"))
+        .current_dir(vault)
+        .args(["check", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn check");
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    let output = match rx.recv_timeout(limit) {
+        Ok(output) => output.expect("wait"),
+        Err(_) => {
+            let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+            panic!("check hung");
+        }
+    };
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn bullets_after<'a>(body: &'a str, heading: &str) -> Vec<&'a str> {
