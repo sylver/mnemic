@@ -252,7 +252,7 @@ fn a_symlink_outside_the_vault_is_refused() {
     );
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(json["error"]["code"], "NOT_FOUND");
+    assert_eq!(json["error"]["code"], "OUTSIDE_VAULT");
     assert_eq!(fs::read(&outside_note).unwrap(), before);
 }
 
@@ -411,6 +411,46 @@ fn a_fifo_in_the_vault_is_not_opened() {
 }
 
 #[cfg(unix)]
+#[test]
+fn parent_and_absolute_paths_are_outside_vault() {
+    let vault = copy_vault();
+    let outside = "/tmp/mnemic-outside-note.md";
+    for query in ["../x.md", outside] {
+        let output = run(
+            &vault,
+            &["log", query, "2026-11-23 | test | hello", "--json"],
+        );
+        assert_eq!(output.status.code(), Some(2), "{query}: {output:?}");
+        let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(json["error"]["code"], "OUTSIDE_VAULT");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn log_on_a_symlink_to_an_outside_fifo_is_outside_vault() {
+    let vault = copy_vault();
+    let outside = tempfile::tempdir().unwrap();
+    let fifo = outside.path().join("trap");
+    mkfifo(&fifo);
+    std::os::unix::fs::symlink(&fifo, vault.join("people/pipe.md")).unwrap();
+    let mut command = assert_cmd::Command::cargo_bin("mnemic").expect("bin");
+    let output = command
+        .current_dir(&vault)
+        .args([
+            "log",
+            "people/pipe.md",
+            "2026-11-23 | test | hello",
+            "--json",
+        ])
+        .timeout(std::time::Duration::from_secs(2))
+        .output()
+        .expect("log returns before the fifo timeout");
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["error"]["code"], "OUTSIDE_VAULT");
+}
+
 fn mkfifo(path: &Path) {
     let status = Command::new("mkfifo").arg(path).status().expect("mkfifo");
     assert!(status.success(), "mkfifo {path:?}");

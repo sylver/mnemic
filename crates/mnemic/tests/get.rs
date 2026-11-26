@@ -1,7 +1,9 @@
 use assert_cmd::Command;
 use std::fs;
 use std::os::unix::fs::symlink;
-use std::process::Output;
+use std::path::Path;
+use std::process::{Command as StdCommand, Output};
+use std::time::Duration;
 
 fn vault() -> String {
     format!("{}/../../fixtures/read", env!("CARGO_MANIFEST_DIR"))
@@ -117,4 +119,75 @@ fn get_refuses_paths_that_escape_the_vault() {
     assert!(!text.contains("SECRET_BODY_MARKER"));
     let body = serde_json::from_str::<serde_json::Value>(&text).expect("json");
     assert_eq!(body["error"]["code"], "OUTSIDE_VAULT");
+}
+
+#[test]
+fn parent_and_absolute_paths_are_outside_vault_for_get_and_links() {
+    let vault = vault();
+    let outside = "/tmp/mnemic-outside-note.md";
+    for command in ["get", "links"] {
+        for query in ["../x.md", outside] {
+            let output = run(&[command, query, "--json", "--vault", &vault]);
+            assert_eq!(output.status.code(), Some(2), "{command} {query}: {output:?}");
+            assert_eq!(json_of(&output)["error"]["code"], "OUTSIDE_VAULT");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn get_on_a_symlink_to_an_outside_fifo_is_outside_vault() {
+    let vault = tempfile::tempdir().expect("vault");
+    fs::write(
+        vault.path().join("mnemic.toml"),
+        "schema_version = 1\nactor = \"sylver\"\n",
+    )
+    .unwrap();
+    let outside = tempfile::tempdir().expect("outside");
+    let fifo = outside.path().join("trap");
+    mkfifo(&fifo);
+    symlink(&fifo, vault.path().join("leak.md")).unwrap();
+    let output = Command::cargo_bin("mnemic")
+        .expect("mnemic")
+        .current_dir(vault.path())
+        .args(["get", "leak.md", "--json"])
+        .timeout(Duration::from_secs(2))
+        .output()
+        .expect("get returns before the fifo timeout");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let body = json_of(&output);
+    assert_eq!(body["error"]["code"], "OUTSIDE_VAULT");
+}
+
+#[cfg(unix)]
+#[test]
+fn get_ignores_an_outside_directory_symlink_and_resolves_the_real_note() {
+    let vault = tempfile::tempdir().expect("vault");
+    fs::write(
+        vault.path().join("mnemic.toml"),
+        "schema_version = 1\nactor = \"sylver\"\n",
+    )
+    .unwrap();
+    fs::create_dir(vault.path().join("people")).unwrap();
+    let note = "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\ntype: note\nschema_version: 1\ntitle: Real\ncreated: 2026-11-23T00:00:00Z\nupdated: 2026-11-23T00:00:00Z\ncreated_by: sylver\nstatus: active\n---\nREAL_NOTE\n";
+    fs::write(vault.path().join("people/ada.md"), note).unwrap();
+    let outside = tempfile::tempdir().expect("outside");
+    fs::create_dir(outside.path().join("people")).unwrap();
+    fs::write(outside.path().join("people/ada.md"), note).unwrap();
+    symlink(outside.path(), vault.path().join("escape")).unwrap();
+    let output = Command::cargo_bin("mnemic")
+        .expect("mnemic")
+        .current_dir(vault.path())
+        .args(["get", "ada", "--json"])
+        .output()
+        .expect("run");
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let body = json_of(&output);
+    assert_eq!(body["data"]["path"], "people/ada.md");
+    assert_eq!(body["data"]["id"], "01ARZ3NDEKTSV4RRFFQ69G5FAV");
+}
+
+fn mkfifo(path: &Path) {
+    let status = StdCommand::new("mkfifo").arg(path).status().expect("mkfifo");
+    assert!(status.success(), "mkfifo {path:?}");
 }
