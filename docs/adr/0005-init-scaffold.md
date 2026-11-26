@@ -1,4 +1,4 @@
-# ADR-0004: Init scaffolds one directory and leaves existing files
+# ADR-0005: Init scaffolds one directory and leaves existing files
 
 ## Status
 
