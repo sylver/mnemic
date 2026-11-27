@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.1.2](https://github.com/sylver/mnemic/compare/v0.1.1...v0.1.2) (2026-11-27)
+
+
+### Features
+
+* **init:** Replace vault AGENTS.md with static README.md ([#29](https://github.com/sylver/mnemic/issues/29)) ([1a2ec68](https://github.com/sylver/mnemic/commit/1a2ec686bbdec2b4719d8323f6c689b46e3e1837))
+* **plugin:** Add plugin manifests, marketplaces, and version sync ([#38](https://github.com/sylver/mnemic/issues/38)) ([d7912e2](https://github.com/sylver/mnemic/commit/d7912e2ffb979e20b697f678ecd098d916e861dd))
+* **set:** Write declared frontmatter fields ([#40](https://github.com/sylver/mnemic/issues/40)) ([45e0b2b](https://github.com/sylver/mnemic/commit/45e0b2be10202d5d897464154365c729ab21457e))
+* **shadow:** Add council mode with opt-in council record ([#43](https://github.com/sylver/mnemic/issues/43)) ([ec4913b](https://github.com/sylver/mnemic/commit/ec4913bf51e3723ffe8b76d005192fd71642a914))
+* **shadow:** Make ingestion source-agnostic and add add-channel mode ([#44](https://github.com/sylver/mnemic/issues/44)) ([e95d59d](https://github.com/sylver/mnemic/commit/e95d59da97fac8a75767e04ba83ccc51c2492af7))
+* **skill:** Add mnemic skill subcommand ([#35](https://github.com/sylver/mnemic/issues/35)) ([8ecc80e](https://github.com/sylver/mnemic/commit/8ecc80e5e7138e78f65a2ba1db375be01545df6e))
+* **skill:** Add shadow skill for install, create, refresh, consult, and persona ([#42](https://github.com/sylver/mnemic/issues/42)) ([51e5af1](https://github.com/sylver/mnemic/commit/51e5af11da7c4a13a4dbec708e443b37705ccb16))
+* **skill:** Ship mnemic agent skill with generated references and drift tests ([#32](https://github.com/sylver/mnemic/issues/32)) ([d5a58df](https://github.com/sylver/mnemic/commit/d5a58dfb8b4a0892db0badc10255d7bf075e942e))
+* **vault:** Bind a default vault from mnemic use ([#41](https://github.com/sylver/mnemic/issues/41)) ([101e852](https://github.com/sylver/mnemic/commit/101e852abeb85fb39ac15079b7f9b51bcc1fc8f6))
+
+
+### Bug Fixes
+
+* **new:** Clean journal template and add source locator flags ([#36](https://github.com/sylver/mnemic/issues/36)) ([8d42dab](https://github.com/sylver/mnemic/commit/8d42dabeff8952174e47431a226ec7243a02cde7))
+* **vault:** Discover the vault from a subdirectory ([#37](https://github.com/sylver/mnemic/issues/37)) ([a8496da](https://github.com/sylver/mnemic/commit/a8496da8c2a3f1b201797581581fe44a3a4b2f84))
+
+
+### Documentation
+
+* **readme:** Rewrite README for OSS users ([#34](https://github.com/sylver/mnemic/issues/34)) ([8215d07](https://github.com/sylver/mnemic/commit/8215d07b8f8efa987adea5a2a4d702539f3e86e5))
+* **types:** Document custom types and add shadow and channel references ([#39](https://github.com/sylver/mnemic/issues/39)) ([cbe5c36](https://github.com/sylver/mnemic/commit/cbe5c363ce6faf476f5a0057fd92d3e8e9f4fdb0))
+* **write:** Remove nonexistent --lock-timeout flag mention ([#30](https://github.com/sylver/mnemic/issues/30)) ([4107394](https://github.com/sylver/mnemic/commit/4107394f585d8a9feaea9d0bd740e4a3a482351b))
+
+
+### Tests
+
+* **cli:** Assert CARGO_PKG_VERSION instead of hardcoded 0.1.0 ([#31](https://github.com/sylver/mnemic/issues/31)) ([f6f1b3c](https://github.com/sylver/mnemic/commit/f6f1b3cd52a9065c6e322ae42b7bc712fc4ba207))
+
 ## [0.1.1](https://github.com/sylver/mnemic/compare/v0.1.0...v0.1.1) (2026-11-26)
 
 
