@@ -9,7 +9,7 @@ use rustix::fs::{flock, FlockOperation};
 
 use crate::Error;
 
-/// Library default, matching the later `--lock-timeout` default.
+/// How long a writer waits for .mnemic/write.lock before returning LockHeld. Every CLI verb uses it.
 pub const DEFAULT_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 
 const INITIAL_BACKOFF: Duration = Duration::from_millis(20);

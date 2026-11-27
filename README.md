@@ -110,6 +110,7 @@ With `--json`, every command prints one envelope: `{"ok": true, "data": {…}, "
 - [Note format and vault layout](docs/format.md)
 - [JSON contract and error codes](docs/contract/check.md)
 - [Architecture decisions](docs/adr/README.md)
+- [Agent skill guide](docs/agents.md)
 - [Changelog](CHANGELOG.md)
 
 ## Contributing
