@@ -14,6 +14,7 @@ Commands:
   get     Print one note by id, slug, alias, or vault-relative path
   links   List outgoing links, backlinks, and broken links for one note
   new     Create a note from a type template
+  set     Set declared frontmatter fields on a note
   mv      Move or rename a note and rewrite incoming wikilinks
   skill   Print the embedded agent skill, or one reference file
   help    Print this message or the help of the given subcommand(s)

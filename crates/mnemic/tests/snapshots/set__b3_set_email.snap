@@ -1,0 +1,16 @@
+---
+source: crates/mnemic/tests/set.rs
+expression: "String::from_utf8(output.stdout.clone()).unwrap()"
+---
+{
+  "ok": true,
+  "data": {
+    "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    "path": "people/ada.md",
+    "noop": false,
+    "changed": [
+      "email"
+    ]
+  },
+  "error": null
+}

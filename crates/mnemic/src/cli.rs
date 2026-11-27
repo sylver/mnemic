@@ -116,6 +116,26 @@ pub enum Command {
         /// Source frontmatter `url`. Rejected for every other type.
         #[arg(long)]
         url: Option<String>,
+        /// Declared field as `key=value`. Repeat to append list items.
+        #[arg(long = "field")]
+        field: Vec<String>,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
+    /// Set declared frontmatter fields on a note.
+    Set {
+        /// Path, id, slug, or alias.
+        note: String,
+        /// Declared field as `key=value`. Repeat to build a list.
+        #[arg(long = "field")]
+        field: Vec<String>,
+        /// Append one `strings` or `tags` item as `key=value`.
+        #[arg(long = "add")]
+        add: Vec<String>,
         /// Print the JSON envelope.
         #[arg(long)]
         json: bool,
