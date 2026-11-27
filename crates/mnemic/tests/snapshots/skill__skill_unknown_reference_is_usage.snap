@@ -1,0 +1,13 @@
+---
+source: crates/mnemic/tests/skill.rs
+expression: stdout
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "USAGE",
+    "message": "unknown reference: nope",
+    "details": {}
+  }
+}

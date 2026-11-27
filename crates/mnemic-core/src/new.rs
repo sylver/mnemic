@@ -3,6 +3,7 @@
 //! Identity checks and the `O_EXCL` create run inside [`crate::write::with_write_lock`].
 //! The same id at the same path is a no-op and does not rewrite the file.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
@@ -12,6 +13,8 @@ use chrono::{DateTime, NaiveDate};
 use serde::Serialize;
 
 use crate::clock::Clock;
+use crate::edit::FrontmatterEdit;
+use crate::fields::{self, FieldEdit};
 use crate::index::{ResolveError, Resolved, VaultIndex};
 use crate::pack::{self, PackError, TypeDef};
 use crate::ulid::{is_ulid, UlidGenerator};
@@ -29,6 +32,12 @@ pub struct NewRequest<'a> {
     pub id: Option<&'a str>,
     pub actor: Option<&'a str>,
     pub date: Option<&'a str>,
+    /// Source frontmatter `path`. Other types reject the flag.
+    pub path: Option<&'a str>,
+    /// Source frontmatter `url`. Other types reject the flag.
+    pub url: Option<&'a str>,
+    /// `key=value` pairs written after the core keys.
+    pub fields: &'a [String],
     pub clock: &'a dyn Clock,
     pub ids: &'a mut UlidGenerator,
     pub lock_timeout: Duration,
@@ -138,9 +147,71 @@ pub fn create_note(request: NewRequest<'_>) -> Result<NewResult, NewError> {
     if let Some(date) = request.date {
         parse_iso_date(date)?;
     }
+    let assignments = request
+        .fields
+        .iter()
+        .map(|raw| fields::parse_assignment(raw, false))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(NewError::Usage)?;
+    if request.path.is_some() && assignments.iter().any(|field| field.key == "path") {
+        return Err(NewError::Usage(
+            "--path and --field path= cannot be combined".to_string(),
+        ));
+    }
+    if request.url.is_some() && assignments.iter().any(|field| field.key == "url") {
+        return Err(NewError::Usage(
+            "--url and --field url= cannot be combined".to_string(),
+        ));
+    }
+    if request.date.is_some() && assignments.iter().any(|field| field.key == "date") {
+        return Err(NewError::Usage(
+            "--date and --field date= cannot be combined".to_string(),
+        ));
+    }
     let (root, config) =
         vault::open_config(request.vault, Some(request.vault)).map_err(vault_error)?;
     let actor = author(request.actor, config.actor.as_deref())?;
+    let pack = pack::resolve_pack(&root).map_err(pack_error)?;
+    let def = pack
+        .get(request.type_name)
+        .ok_or_else(|| NewError::UnknownType(format!("unknown type {}", request.type_name)))?;
+    let prepared =
+        fields::edits_for(request.type_name, def, &assignments).map_err(NewError::Usage)?;
+    let mut extras = Vec::new();
+    for edit in prepared {
+        match edit {
+            FieldEdit::Replace { key, yaml, .. } => extras.push((key, yaml)),
+            FieldEdit::Add { key, .. } => {
+                return Err(NewError::Usage(format!(
+                    "--add applies to strings and tags, not {key}"
+                )));
+            }
+        }
+    }
+    let (source_path, source_url) = source_locators(
+        request.type_name,
+        request.path,
+        request.url,
+        extras.iter().any(|(key, _)| key == "path"),
+        extras.iter().any(|(key, _)| key == "url"),
+    )?;
+    let mut present: BTreeSet<&str> = BTreeSet::new();
+    present.insert("title");
+    if request.type_name == "journal" || extras.iter().any(|(key, _)| key == "date") {
+        present.insert("date");
+    }
+    if source_path.is_some() || extras.iter().any(|(key, _)| key == "path") {
+        present.insert("path");
+    }
+    if source_url.is_some() || extras.iter().any(|(key, _)| key == "url") {
+        present.insert("url");
+    }
+    for (key, _) in &extras {
+        present.insert(key);
+    }
+    if let Some(message) = fields::missing_required(def, &present) {
+        return Err(NewError::Usage(message));
+    }
     let NewRequest {
         type_name,
         title,
@@ -158,6 +229,9 @@ pub fn create_note(request: NewRequest<'_>) -> Result<NewResult, NewError> {
         id,
         actor: &actor,
         date,
+        source_path: source_path.as_deref(),
+        source_url: source_url.as_deref(),
+        extras,
         clock,
         ids,
     };
@@ -168,6 +242,40 @@ pub fn create_note(request: NewRequest<'_>) -> Result<NewResult, NewError> {
         Ok(Err(err)) => Err(err),
         Err(err) => Err(lock_error(err)),
     }
+}
+
+fn nonempty(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}
+
+/// `--path` and `--url` are source locators. Other types reject them.
+/// A source note needs at least one trimmed, non-empty value.
+fn source_locators(
+    type_name: &str,
+    path: Option<&str>,
+    url: Option<&str>,
+    field_path: bool,
+    field_url: bool,
+) -> Result<(Option<String>, Option<String>), NewError> {
+    if type_name != "source" {
+        if path.is_some() || url.is_some() {
+            return Err(NewError::Usage(
+                "--path and --url apply only to source notes".to_string(),
+            ));
+        }
+        return Ok((None, None));
+    }
+    let path = nonempty(path);
+    let url = nonempty(url);
+    if path.is_none() && url.is_none() && !field_path && !field_url {
+        return Err(NewError::Usage(
+            "source notes need a non-empty --path or --url".to_string(),
+        ));
+    }
+    Ok((path, url))
 }
 
 fn author(flag: Option<&str>, configured: Option<&str>) -> Result<String, NewError> {
@@ -187,6 +295,9 @@ struct Draft<'a> {
     id: Option<&'a str>,
     actor: &'a str,
     date: Option<&'a str>,
+    source_path: Option<&'a str>,
+    source_url: Option<&'a str>,
+    extras: Vec<(String, String)>,
     clock: &'a dyn Clock,
     ids: &'a mut UlidGenerator,
 }
@@ -217,11 +328,19 @@ fn create_locked(
     let journal_date = if def.name == "journal" {
         Some(match draft.date {
             Some(date) => date.to_string(),
-            None => local_iso_date(),
+            None => draft
+                .extras
+                .iter()
+                .find(|(key, _)| key == "date")
+                .map(|(_, yaml)| yaml.clone())
+                .unwrap_or_else(local_iso_date),
         })
     } else {
         None
     };
+    if journal_date.is_some() {
+        draft.extras.retain(|(key, _)| key != "date");
+    }
     let index = VaultIndex::load(root).map_err(|err| match err {
         crate::check::CheckFatal::Usage(message) | crate::check::CheckFatal::Io(message) => {
             NewError::Io(message)
@@ -268,8 +387,11 @@ fn create_locked(
         stamp: &stamp(draft.clock),
         actor: draft.actor,
         date: journal_date.as_deref(),
+        source_path: draft.source_path,
+        source_url: draft.source_url,
+        extras: &draft.extras,
         body: &body,
-    });
+    })?;
     match txn.create_exclusive(&full, bytes.as_bytes()) {
         Ok(()) => Ok(NewResult {
             id: new_id,
@@ -421,10 +543,13 @@ struct Rendered<'a> {
     stamp: &'a str,
     actor: &'a str,
     date: Option<&'a str>,
+    source_path: Option<&'a str>,
+    source_url: Option<&'a str>,
+    extras: &'a [(String, String)],
     body: &'a str,
 }
 
-fn render_note(note: &Rendered<'_>) -> String {
+fn render_note(note: &Rendered<'_>) -> Result<String, NewError> {
     let mut text = format!(
         "---\nid: {id}\ntype: {type_name}\nschema_version: {schema_version}\ntitle: {}\ncreated: {stamp}\nupdated: {stamp}\ncreated_by: {}\nstatus: active\n",
         yaml_string(note.title),
@@ -439,12 +564,32 @@ fn render_note(note: &Rendered<'_>) -> String {
         text.push_str(date);
         text.push('\n');
     }
+    if let Some(path) = note.source_path {
+        text.push_str("path: ");
+        text.push_str(&yaml_string(path));
+        text.push('\n');
+    }
+    if let Some(url) = note.source_url {
+        text.push_str("url: ");
+        text.push_str(&yaml_string(url));
+        text.push('\n');
+    }
     text.push_str("---\n");
     text.push_str(note.body);
     if !note.body.ends_with('\n') {
         text.push('\n');
     }
-    text
+    for (key, yaml) in note.extras {
+        let parsed =
+            crate::frontmatter::parse_note(&text).map_err(|err| NewError::Io(err.to_string()))?;
+        text = if parsed.values.contains_key(key) {
+            FrontmatterEdit::replace(&text, key, yaml)
+        } else {
+            FrontmatterEdit::insert(&text, key, yaml)
+        }
+        .map_err(|err| NewError::Io(err.to_string()))?;
+    }
+    Ok(text)
 }
 
 fn yaml_string(value: &str) -> String {

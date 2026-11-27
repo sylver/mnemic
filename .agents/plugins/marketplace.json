@@ -1,0 +1,23 @@
+{
+  "name": "mnemic",
+  "owner": {
+    "name": "Sylver"
+  },
+  "interface": {
+    "displayName": "mnemic"
+  },
+  "plugins": [
+    {
+      "name": "mnemic",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mnemic"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

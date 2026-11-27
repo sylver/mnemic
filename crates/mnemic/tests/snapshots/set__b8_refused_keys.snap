@@ -1,0 +1,31 @@
+---
+source: crates/mnemic/tests/set.rs
+expression: snaps
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "USAGE",
+    "message": "id is not a field of person",
+    "details": {}
+  }
+}
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "USAGE",
+    "message": "nope is not a field of person",
+    "details": {}
+  }
+}
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "USAGE",
+    "message": "aliases is not a field of person",
+    "details": {}
+  }
+}

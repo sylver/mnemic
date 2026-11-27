@@ -1,4 +1,4 @@
-# ADR-0014: Default vault lives in user config, below the directory walk
+# ADR-0015: Default vault lives in user config, below the directory walk
 
 ## Status
 

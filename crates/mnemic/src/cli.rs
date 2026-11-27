@@ -110,6 +110,32 @@ pub enum Command {
         /// Journal `date` as `YYYY-MM-DD`. Defaults to the process local date.
         #[arg(long)]
         date: Option<String>,
+        /// Source frontmatter `path`. Rejected for every other type.
+        #[arg(long)]
+        path: Option<String>,
+        /// Source frontmatter `url`. Rejected for every other type.
+        #[arg(long)]
+        url: Option<String>,
+        /// Declared field as `key=value`. Repeat to append list items.
+        #[arg(long = "field")]
+        field: Vec<String>,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+        /// Vault root. Defaults to the nearest parent `mnemic.toml`.
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
+    /// Set declared frontmatter fields on a note.
+    Set {
+        /// Path, id, slug, or alias.
+        note: String,
+        /// Declared field as `key=value`. Repeat to build a list.
+        #[arg(long = "field")]
+        field: Vec<String>,
+        /// Append one `strings` or `tags` item as `key=value`.
+        #[arg(long = "add")]
+        add: Vec<String>,
         /// Print the JSON envelope.
         #[arg(long)]
         json: bool,
@@ -140,6 +166,15 @@ pub enum Command {
         /// Remove the default vault.
         #[arg(long, conflicts_with = "path")]
         clear: bool,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the embedded agent skill, or one reference file.
+    Skill {
+        /// Reference to print: `contract` or `types`. Defaults to `SKILL.md`.
+        #[arg(long, value_name = "contract|types")]
+        reference: Option<String>,
         /// Print the JSON envelope.
         #[arg(long)]
         json: bool,

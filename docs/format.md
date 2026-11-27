@@ -19,7 +19,7 @@ The user config file is `$XDG_CONFIG_HOME/mnemic/config.toml` when `XDG_CONFIG_H
 
 ```toml
 schema_version = 1
-actor = "sylver"
+actor = "alice"
 ```
 
 `schema_version` is an integer. This CLI accepts `1`. A higher value is refused. `actor` is a non-empty name or bot id. `mnemic check` requires `actor`. `mnemic init` writes `actor` only when `--as` is passed, and only when it creates `mnemic.toml`.
@@ -157,9 +157,17 @@ The file lands in the type's pack folder. A `note` is unfiled, so it lands in `i
 
 `id` is a Crockford ULID from the seedable generator, or `--id` when that flag is itself a Crockford ULID. Anything else is `BAD_ID`. `created` and `updated` are the same RFC 3339 timestamp from the clock. `created_by` is `--as` or `actor` in `mnemic.toml`. With neither, `new` is `USAGE` and the message names both `--as` and `actor`. `status` is `active`. `new` does not write `visibility`.
 
+A `source` note takes `--path` and `--url`. At least one must be non-empty after trimming, and each non-empty value is written as frontmatter `path` or `url`. Other types reject those flags with `USAGE` and write no file. A `source` with neither locator is the same `USAGE` and writes no file.
+
 The same `--id` at the same path is a success no-op and does not rewrite the file. The same `--id` at a different path is `ID_EXISTS`. The new filename slug must not equal any other note's slug or alias, compared case-insensitively after NFC. That is `SLUG_COLLISION`, including a slug in another folder. Notes that already share a slug stay. `new` does not add another. The create is `O_EXCL` under the vault write lock. A destination that canonicalizes outside the vault is `OUTSIDE_VAULT` and is not written. `sources/raw/` is not a create destination.
 
-## Vault overlays
+## Custom types
+
+1. Write `<vault>/types/<name>.toml` with the type pack schema. Pick a folder no other type uses.
+2. Optionally write `<vault>/types/<name>.md` as the body template. With no template, `new` fails with `MISSING_TEMPLATE`.
+3. Run `mnemic check`. A bad file is `INVALID_PACK` and names the path.
+4. Create notes with `mnemic new <name> "<title>" --field key=value`. Change fields later with `mnemic set`.
+5. Commit `types/` with the vault. Every clone and every bot gets the same types.
 
 `<vault>/types/*.toml` is the only overlay. The file stem is the type name, and that name is one path component. `check` loads that directory from the vault root at the start of a run. Files there are pack files. `check` does not treat them as notes. A symlink at `types/` or at a pack or template file, and a path that canonicalizes outside the vault, is `INVALID_PACK`. The finding names the vault-relative path and does not include the other file's text.
 
@@ -167,9 +175,27 @@ A new name adds a custom type. The same name replaces the built-in declaration w
 
 `folder` may change. Two types that claim the same folder string are `INVALID_PACK`, because a later `--fix` could not choose a folder. Malformed overlay TOML is `INVALID_PACK` and the process exits 2. There is no `[packs]` table.
 
+`check` validates custom fields the same way it validates built-in fields. A required field that is absent is `MISSING_FIELD`. A link on a field with `target` that does not resolve is `BROKEN_LINK`. `check` does not validate `state` values, the `date` kind, or that a resolved link target has the named type. Unknown keys are kept.
+
+A skill ships types in `assets/types/`. Read those files from the skill's own `assets/types/` first. When the skill is installed as a single file, read them from the release tag `v<metadata.mnemic-version>`. Copy a file into `<vault>/types/` when it is missing. When the bytes already match, leave the file alone. Never overwrite a file whose bytes differ. The reference types live at [plugins/mnemic/skills/shadow/](../plugins/mnemic/skills/shadow/).
+
 ## Frontmatter edits
 
 `FrontmatterEdit` in `mnemic-core` inserts a top-level key, replaces a top-level key's scalar, appends one list item with `append_sequence_item`, or prepends a block with `create_block`. Insert and replace match column-0 keys of the root mapping. A nested key of the same name is left alone. Replace refuses a value that spans lines (a `|` or `>` block scalar, an indented continuation, or a flow or block collection) with `MultilineValue` and does not rewrite that block. It copies every byte it was not asked to change, including comments, key order, quoting, and the body. A `#` inside a quoted scalar is part of the value. A trailing comment outside quotes stays. `create_block` writes `---\n<keys>\n---\n` in front of a file that has no frontmatter and leaves the rest of the file untouched. The value text is the caller's YAML scalar. The editor does not invent quotes. It does not write files. A later verb passes the bytes to `WriteTxn::atomic_write`. A brand-new file may be written as a fresh block without this editor.
+
+## Setting fields
+
+`mnemic set <note> --field key=value` writes one declared field through `FrontmatterEdit` inside the write lock. `new --field key=value` writes the same kind of field when the note is created, after the core keys. The key is a field the note's type declares, or `state`, `tags`, or `title`. `id`, `type`, `schema_version`, `created`, `created_by`, `updated`, `status`, `aliases`, `supersedes`, and any other key are `USAGE`. The message names the key and the type.
+
+A `string` or `title` is one non-empty single-line value. A second `--field` for that key is `USAGE`. A `strings` field or `tags` accepts repeated `--field` values, in order, collapsed after NFC case-folding, and is written as one flow sequence. `--add key=value` appends one list item. An item already present is left as-is. `--field` and `--add` for the same key in one call is `USAGE`.
+
+A `date` is `YYYY-MM-DD` or an RFC 3339 datetime with an offset, written unquoted. `state` must be one of the type's `[state] values`. Scalars go through `yaml_scalar`, which quotes YAML reserved words and numeric literals so they read back as strings. `new` still quotes `title`, `created_by`, `path`, and `url` the way it always has.
+
+`replace_sequence` replaces a single-line value or a pure block sequence (`- ` items) with that flow line and copies every other byte. A `|` or `>` block scalar, or a nested mapping, is `USAGE` and the file is left unchanged. `replace` still refuses a value that spans lines.
+
+`set` checks every field before it takes the lock, then reads the note again inside the lock. `changed` lists the keys whose bytes changed, in argument order, and does not include `updated`. When nothing changed, `set` does not write the file and does not stamp `updated`. `new` refuses a missing `required = true` field and writes no file. `--path` with `--field path=`, `--url` with `--field url=`, and `--date` with `--field date=` are `USAGE`.
+
+`set` does not unset a key, write `aliases` or `supersedes`, or resolve link targets. `check` remains the broken-link reporter.
 
 ## Search
 

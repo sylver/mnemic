@@ -9,12 +9,13 @@ use clap::Parser;
 use mnemic::cli::{Cli, Command};
 use mnemic_core::{
     check_fix, create_note, exit_code, fatal_envelope, fatal_envelope_with, findings_envelope,
-    fix_envelope, init_vault, log_note, move_note, read_note, search_vault, success_envelope,
-    to_json, CheckEnvelope, CheckFatal, EnvelopeCode, FixError, FixRequest, InitData, InitError,
-    InitRequest, InitSuccess, LogError, LogRequest, MoveError, MoveRequest, NewError, NewRequest,
-    NoteView, ReadError, SearchData, SearchEnvelope, SearchError, SearchRequest, SystemClock,
-    UlidGenerator, VaultError,
+    fix_envelope, init_vault, log_note, move_note, read_note, search_vault, set_fields,
+    success_envelope, to_json, CheckEnvelope, CheckFatal, EnvelopeCode, FixError, FixRequest,
+    InitData, InitError, InitRequest, InitSuccess, LogError, LogRequest, MoveError, MoveRequest,
+    NewError, NewRequest, NoteView, ReadError, SearchData, SearchEnvelope, SearchError,
+    SearchRequest, SetError, SetRequest, SystemClock, UlidGenerator, VaultError,
 };
+use serde::Serialize;
 use serde_json::{json, Value};
 
 fn main() -> ExitCode {
@@ -50,9 +51,30 @@ fn main() -> ExitCode {
             id,
             actor,
             date,
+            path,
+            url,
+            field,
             json,
             vault,
-        } => new_note(type_name, title, id, actor, date, json, vault),
+        } => new_note(NewArgs {
+            type_name,
+            title,
+            id,
+            actor,
+            date,
+            path,
+            url,
+            field,
+            json,
+            vault,
+        }),
+        Command::Set {
+            note,
+            field,
+            add,
+            json,
+            vault,
+        } => set_note(note, field, add, json, vault),
         Command::Mv {
             note,
             dest,
@@ -61,6 +83,49 @@ fn main() -> ExitCode {
             vault,
         } => mv(note, dest, no_rewrite, json, vault),
         Command::Use { path, clear, json } => use_vault(path, clear, json),
+        Command::Skill { reference, json } => skill(reference, json),
+    }
+}
+
+const SKILL_MD: &str = include_str!("../../../plugins/mnemic/skills/mnemic/SKILL.md");
+const SKILL_CONTRACT: &str =
+    include_str!("../../../plugins/mnemic/skills/mnemic/references/contract.md");
+const SKILL_TYPES: &str = include_str!("../../../plugins/mnemic/skills/mnemic/references/types.md");
+
+fn skill(reference: Option<String>, json: bool) -> ExitCode {
+    let (name, content) = match reference.as_deref() {
+        None => ("SKILL.md", SKILL_MD),
+        Some("contract") => ("references/contract.md", SKILL_CONTRACT),
+        Some("types") => ("references/types.md", SKILL_TYPES),
+        Some(other) => {
+            return emit(
+                json,
+                fatal_envelope(EnvelopeCode::Usage, format!("unknown reference: {other}")),
+                exit_code(EnvelopeCode::Usage),
+            );
+        }
+    };
+    if json {
+        let value = SkillEnvelope {
+            ok: true,
+            data: Some(SkillData {
+                name,
+                version: env!("CARGO_PKG_VERSION"),
+                content,
+            }),
+            error: None,
+        };
+        match serde_json::to_string_pretty(&value) {
+            Ok(text) => println!("{text}"),
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::from(1);
+            }
+        }
+        ExitCode::SUCCESS
+    } else {
+        print!("{content}");
+        ExitCode::SUCCESS
     }
 }
 
@@ -71,13 +136,13 @@ fn mv(
     json: bool,
     vault: Option<PathBuf>,
 ) -> ExitCode {
-    let vault = match open_command(vault.as_deref(), true, json) {
-        Ok(vault) => vault,
+    let root = match open_command(vault.as_deref(), true, json) {
+        Ok(vault) => vault.root,
         Err(code) => return code,
     };
     let dest = dest.to_string_lossy();
     let result = move_note(MoveRequest {
-        vault: &vault.root,
+        vault: &root,
         note: &note,
         dest: &dest,
         rewrite: !no_rewrite,
@@ -150,15 +215,32 @@ fn fatal_from_mv(err: MoveError) -> (EnvelopeCode, String, BTreeMap<String, Valu
     }
 }
 
-fn new_note(
+struct NewArgs {
     type_name: String,
     title: String,
     id: Option<String>,
     actor: Option<String>,
     date: Option<String>,
+    path: Option<String>,
+    url: Option<String>,
+    field: Vec<String>,
     json: bool,
     vault: Option<PathBuf>,
-) -> ExitCode {
+}
+
+fn new_note(args: NewArgs) -> ExitCode {
+    let NewArgs {
+        type_name,
+        title,
+        id,
+        actor,
+        date,
+        path,
+        url,
+        field,
+        json,
+        vault,
+    } = args;
     let root = match resolve_command(vault.as_deref(), true, json) {
         Ok(root) => root,
         Err(code) => return code,
@@ -171,6 +253,9 @@ fn new_note(
         id: id.as_deref(),
         actor: actor.as_deref(),
         date: date.as_deref(),
+        path: path.as_deref(),
+        url: url.as_deref(),
+        fields: &field,
         clock: &SystemClock,
         ids: &mut ids,
         lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,
@@ -199,6 +284,82 @@ fn new_note(
     }
 }
 
+fn set_note(
+    note: String,
+    field: Vec<String>,
+    add: Vec<String>,
+    json: bool,
+    vault: Option<PathBuf>,
+) -> ExitCode {
+    let root = match resolve_command(vault.as_deref(), true, json) {
+        Ok(root) => root,
+        Err(code) => return code,
+    };
+    let result = set_fields(SetRequest {
+        vault: &root,
+        note: &note,
+        fields: &field,
+        adds: &add,
+        clock: &SystemClock,
+        lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,
+    });
+    match result {
+        Ok(result) => {
+            if json {
+                match serde_json::to_string_pretty(&result.success()) {
+                    Ok(text) => println!("{text}"),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else if result.noop {
+                println!("noop {}", result.path);
+            } else {
+                println!("{} {}", result.path, result.changed.join(" "));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            let (code, message, details) = fatal_from_set(err);
+            let envelope = if details.is_empty() {
+                fatal_envelope(code, message)
+            } else {
+                fatal_envelope_with(code, message, details)
+            };
+            emit(json, envelope, exit_code(code))
+        }
+    }
+}
+
+fn fatal_from_set(err: SetError) -> (EnvelopeCode, String, BTreeMap<String, Value>) {
+    match err {
+        SetError::Usage(message) => (EnvelopeCode::Usage, message, BTreeMap::new()),
+        SetError::NotFound(message) => (EnvelopeCode::NotFound, message, BTreeMap::new()),
+        SetError::Ambiguous { candidates } => {
+            let rows: Vec<Value> = candidates
+                .iter()
+                .map(|path| json!({ "path": path }))
+                .collect();
+            let mut details = BTreeMap::new();
+            details.insert("candidates".to_string(), Value::Array(rows));
+            (
+                EnvelopeCode::Ambiguous,
+                format!("note matches more than one path: {}", candidates.join(", ")),
+                details,
+            )
+        }
+        SetError::OutsideVault(message) => (EnvelopeCode::OutsideVault, message, BTreeMap::new()),
+        SetError::UnknownType(message) => (EnvelopeCode::UnknownType, message, BTreeMap::new()),
+        SetError::LockHeld { .. } => (EnvelopeCode::LockHeld, err.to_string(), BTreeMap::new()),
+        SetError::Io(message) => (EnvelopeCode::Io, message, BTreeMap::new()),
+        SetError::Vault(message) => {
+            let (code, message) = fatal_from_vault_message(&message);
+            (code, message, BTreeMap::new())
+        }
+    }
+}
+
 fn fatal_from_new(err: NewError) -> (EnvelopeCode, String) {
     match err {
         NewError::Usage(message) => (EnvelopeCode::Usage, message),
@@ -219,12 +380,12 @@ fn random_seed() -> u64 {
 }
 
 fn log(note: String, text: String, json: bool, vault: Option<PathBuf>) -> ExitCode {
-    let vault = match open_command(vault.as_deref(), true, json) {
-        Ok(vault) => vault,
+    let root = match open_command(vault.as_deref(), true, json) {
+        Ok(vault) => vault.root,
         Err(code) => return code,
     };
     let result = log_note(LogRequest {
-        vault: &vault.root,
+        vault: &root,
         note: &note,
         text: &text,
         clock: &SystemClock,
@@ -309,12 +470,12 @@ fn search(
             );
         }
     };
-    let vault = match open_command(vault.as_deref(), true, json) {
-        Ok(vault) => vault,
+    let root = match open_command(vault.as_deref(), true, json) {
+        Ok(vault) => vault.root,
         Err(code) => return code,
     };
     match search_vault(
-        &vault.root,
+        &root,
         SearchRequest {
             query: &query,
             type_name: type_name.as_deref(),
@@ -360,11 +521,11 @@ fn emit_search(json: bool, data: SearchData) -> ExitCode {
 }
 
 fn show(query: String, json: bool, vault: Option<PathBuf>, links_only: bool) -> ExitCode {
-    let vault = match open_command(vault.as_deref(), true, json) {
-        Ok(vault) => vault,
+    let root = match open_command(vault.as_deref(), true, json) {
+        Ok(vault) => vault.root,
         Err(code) => return code,
     };
-    match read_note(&vault.root, &query) {
+    match read_note(&root, &query) {
         Ok(note) => emit_note(json, &note, links_only),
         Err(err) => {
             let (code, envelope) = fatal_from_read(err);
@@ -1046,6 +1207,20 @@ fn fatal_from_vault(err: VaultError) -> (EnvelopeCode, String) {
         ),
         VaultError::Io(message) => (EnvelopeCode::Io, message),
     }
+}
+
+#[derive(Serialize)]
+struct SkillEnvelope<'a> {
+    ok: bool,
+    data: Option<SkillData<'a>>,
+    error: Option<Value>,
+}
+
+#[derive(Serialize)]
+struct SkillData<'a> {
+    name: &'a str,
+    version: &'a str,
+    content: &'a str,
 }
 
 fn emit(json: bool, envelope: CheckEnvelope, status: i32) -> ExitCode {

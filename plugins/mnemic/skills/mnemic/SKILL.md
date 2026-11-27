@@ -134,15 +134,31 @@ Failures: `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAU
 
 Create a note from a type template.
 
-Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --json --vault <path>`
+Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --path <path> --url <url> --field <key=value> --json --vault <path>`
 
 Example: `mnemic new note "Probe note" --as sylver --json --vault .`
 
-Pass `--as` on every `new`. `--date` sets journal `date`.
+Pass `--as` on every `new`. `--date` sets journal `date`. A `source` note needs a non-empty `--path` or `--url` (or both). Other types reject those flags.
 
 Success `data`: `id`, `path`, `noop`. `path` is vault-relative. `noop` is true only when that id is already the note at that path.
 
-Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug or missing author), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
+Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug, missing author, locator flags on a non-source, a source with no locator, a bad `--field`, or a missing required field), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
+
+`--field key=value` sets a declared field, `state`, `tags`, or `title` when the note is created. Repeat it to build a list. Do not combine `--path` with `--field path=`, `--url` with `--field url=`, or `--date` with `--field date=`.
+
+### set
+
+Set declared frontmatter fields on one note. Do not hand-edit YAML.
+
+Synopsis: `mnemic set <note> --field <key=value> --add <key=value> --json --vault <path>`
+
+Example: `mnemic set ada --field email=ada@example.com --field state=current --json --vault .`
+
+Pass at least one `--field` or `--add`. `--field` sets a declared field, `state`, `tags`, or `title`. `--add` appends one `strings` or `tags` item. A repeated `--field` builds a list. Do not pass `--field` and `--add` for the same key.
+
+Success `data`: `id`, `path`, `noop`, `changed`. `changed` lists keys whose bytes changed, in argument order, without `updated`. `noop` is true when nothing changed. The file is not written and `updated` is not stamped.
+
+Failures: `USAGE` (bad key, kind, value, or state; a multi-line existing value; no frontmatter; `sources/raw/`), `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAULT`, `UNKNOWN_TYPE`, `VAULT_NOT_FOUND`, `IO`, `LOCK_HELD`.
 
 ### mv
 
@@ -167,6 +183,20 @@ Example: `mnemic use --json`
 Success `data`: `vault`, `source` (`cwd`, `default`, or null), `default`, `config`, `changed`. The show form exits 0 when nothing resolves.
 
 Failures: `VAULT_NOT_FOUND` (no vault at or above `<path>`), `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, `USAGE` (`<path>` with `--clear`, a non-UTF-8 path, or no `HOME` and no `XDG_CONFIG_HOME` on set or clear), `IO`.
+
+### skill
+
+Print the embedded agent skill, or one reference file. This command does not open a vault.
+
+Synopsis: `mnemic skill [--reference <contract|types>] [--json]`
+
+Example: `mnemic skill --json`
+
+No `--reference` prints `SKILL.md`. `--reference contract` prints `references/contract.md`. `--reference types` prints `references/types.md`.
+
+Success `data`: `name`, `version`, `content`. `version` matches `mnemic --version`.
+
+Failures: `USAGE` when `--reference` is not `contract` or `types`.
 
 ## Workflows
 
@@ -209,6 +239,8 @@ On a rebase conflict in a note, keep both sides' timeline lines and sort them by
 ## Types
 
 One line per built-in type. Folders, fields, timeline, and states are generated in [references/types.md](references/types.md). A vault overlay at `<vault>/types/<type>.toml` replaces that type whole. `<vault>/types/<type>.md` replaces its body template.
+
+Custom types are vault files at `types/<name>.toml`, with an optional body at `types/<name>.md`. After `mnemic check` accepts the pack, `mnemic new <name>` creates a note of that type. Steps, field checks, and shipping types from a skill are in [docs/format.md](../../../../docs/format.md).
 
 - `decision` lives in `decisions/`, timeline on, states `proposed`, `accepted`, `superseded`.
 - `idea` lives in `ideas/`, timeline off, states `open`, `parked`, `adopted`.

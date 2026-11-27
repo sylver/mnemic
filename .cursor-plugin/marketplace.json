@@ -1,0 +1,13 @@
+{
+  "name": "mnemic",
+  "owner": {
+    "name": "Sylver"
+  },
+  "plugins": [
+    {
+      "name": "mnemic",
+      "source": "plugins/mnemic",
+      "description": "A command-line vault of Markdown notes for people and agents."
+    }
+  ]
+}

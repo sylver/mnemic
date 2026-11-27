@@ -1,0 +1,17 @@
+schema_version = 1
+folder = "shadows"
+timeline = true
+
+[state]
+values = ["active", "paused", "retired"]
+
+[[field]]
+name = "person"
+type = "string"
+target = "person"
+required = false
+
+[[field]]
+name = "domains"
+type = "strings"
+required = false

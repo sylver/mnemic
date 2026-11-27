@@ -1,4 +1,7 @@
+mod common;
+
 use std::path::PathBuf;
+use std::process::Output;
 
 use clap::CommandFactory;
 use mnemic::cli::Cli;
@@ -107,6 +110,54 @@ fn long_flags(subcommand: &str) -> Vec<String> {
         }
     }
     flags
+}
+
+fn run(args: &[&str]) -> Output {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut command = common::mnemic();
+    command.current_dir(dir.path());
+    command.args(args).output().expect("run mnemic")
+}
+
+fn reference_text(name: &str) -> String {
+    let path = repo_root().join("plugins/mnemic/skills/mnemic").join(name);
+    std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{name}: {err}"))
+}
+
+#[test]
+fn skill_outside_a_vault_prints_skill_md() {
+    let output = run(&["skill"]);
+    assert!(output.status.success(), "status {:?}", output.status);
+    assert_eq!(output.stdout, skill_text().as_bytes());
+}
+
+#[test]
+fn skill_reference_types_json_matches_embedded_file() {
+    let output = run(&["skill", "--reference", "types", "--json"]);
+    assert!(output.status.success(), "status {:?}", output.status);
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+    assert_eq!(value["ok"], true);
+    assert!(value["error"].is_null());
+    assert_eq!(value["data"]["name"], "references/types.md");
+    assert_eq!(value["data"]["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        value["data"]["content"],
+        reference_text("references/types.md")
+    );
+    insta::assert_snapshot!(stdout);
+}
+
+#[test]
+fn skill_unknown_reference_is_usage() {
+    let output = run(&["skill", "--reference", "nope", "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+    assert_eq!(value["ok"], false);
+    assert!(value["data"].is_null());
+    assert_eq!(value["error"]["code"], "USAGE");
+    insta::assert_snapshot!(stdout);
 }
 
 fn verb_section<'a>(body: &'a str, name: &str) -> &'a str {
