@@ -78,7 +78,7 @@ Example: `mnemic init --as sylver --json`
 
 Success `data`: `vault`, `created`, `skipped`.
 
-Failures: `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, `NESTED_VAULT` (a parent already has `mnemic.toml`), `IO`, `LOCK_HELD`. Pass `--as` on every `init`.
+Failures: `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, `NESTED_VAULT` (a parent already has `mnemic.toml`), `IO`, `LOCK_HELD`. Pass `--as` on every `init`. A new vault gets a static root `README.md` when that file is absent. An existing `README.md` is left in place and listed in `data.skipped`. `init` does not write a vault `AGENTS.md`.
 
 ### log
 

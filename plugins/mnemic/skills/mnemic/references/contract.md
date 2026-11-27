@@ -145,7 +145,7 @@ Unexpected I/O uses `IO` and exit 1. Every other fatal code and `CHECK_FAILED` u
 
 An edge has `kind` (`wikilink`, `embed`, or `frontmatter:<field>`), `raw` (the link text), `source` (the note id that contains the link), and `target` (the resolved note id, or null when the target is a file or the link did not resolve). Backlinks are computed. They are not written into Markdown.
 
-The JSON Schema for the envelope is [`check.schema.json`](check.schema.json).
+The JSON Schema for the envelope is `docs/contract/check.schema.json`.
 
 ## `mnemic log`
 
@@ -182,6 +182,8 @@ Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, and 
 `mnemic init [--as <actor>] [--vault <dir>] --json` prints one JSON document. The target is `--vault`, or the current directory. `init` does not walk to a parent vault.
 
 Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`, and `skipped`. `vault` is the target directory. `created` lists paths this call wrote. `skipped` lists paths left in place because they already existed.
+
+`init` writes `README.md` only when no entry exists at that path. An existing entry is left unchanged and listed in `skipped`. `init` does not write `AGENTS.md`.
 
 `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal for `init`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `NESTED_VAULT` means a parent of the target already has `mnemic.toml`.
 

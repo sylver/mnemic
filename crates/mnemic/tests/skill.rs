@@ -1,7 +1,7 @@
 use std::path::PathBuf;
-use std::process::Output;
 
-use assert_cmd::Command;
+use clap::CommandFactory;
+use mnemic::cli::Cli;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -81,58 +81,29 @@ fn valid_skill_name(name: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-fn mnemic(args: &[&str]) -> Output {
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
-    command.args(args).output().expect("run mnemic")
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8(output.stdout.clone()).expect("utf-8 stdout")
-}
-
 /// Subcommands `Cli::command()` exposes, skipping clap's built-in `help`.
 fn subcommands() -> Vec<String> {
-    let help = stdout(&mnemic(&["--help"]));
-    let mut names = Vec::new();
-    let mut in_commands = false;
-    for line in help.lines() {
-        if line.starts_with("Commands:") {
-            in_commands = true;
-            continue;
-        }
-        if !in_commands {
-            continue;
-        }
-        if line.starts_with("Options:") {
-            break;
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let name = trimmed.split_whitespace().next().expect("command name");
-        if name != "help" {
-            names.push(name.to_string());
-        }
-    }
-    assert!(!names.is_empty(), "no subcommands in mnemic --help");
+    let names: Vec<String> = Cli::command()
+        .get_subcommands()
+        .map(|command| command.get_name().to_string())
+        .filter(|name| name != "help")
+        .collect();
+    assert!(!names.is_empty(), "no subcommands on Cli::command()");
     names
 }
 
 fn long_flags(subcommand: &str) -> Vec<String> {
-    let help = stdout(&mnemic(&[subcommand, "--help"]));
+    let command = Cli::command();
+    let sub = command
+        .find_subcommand(subcommand)
+        .unwrap_or_else(|| panic!("verb guide missing {subcommand}"));
     let mut flags = Vec::new();
-    for token in help.split_whitespace() {
-        let token = token.trim_matches(',');
-        if let Some(name) = token.strip_prefix("--") {
-            if !name.is_empty()
-                && name
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-                && !flags.iter().any(|flag| flag == name)
-            {
-                flags.push(name.to_string());
-            }
+    for arg in sub.get_arguments() {
+        let Some(name) = arg.get_long() else {
+            continue;
+        };
+        if !flags.iter().any(|flag| flag == name) {
+            flags.push(name.to_string());
         }
     }
     flags
@@ -192,6 +163,7 @@ fn frontmatter_matches_agent_skills_rules() {
         "description length {}",
         description.len()
     );
+    assert_eq!(frontmatter_value(&front, "license"), "MIT");
     let compatibility = frontmatter_value(&front, "compatibility");
     assert!(
         compatibility.len() <= 500,

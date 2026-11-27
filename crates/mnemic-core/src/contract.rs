@@ -91,80 +91,65 @@ pub enum FindingCode {
     Ambiguous,
 }
 
-/// Codes on `error.code`. Findings use `CHECK_FAILED`. The rest are fatal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
-pub enum EnvelopeCode {
-    #[serde(rename = "BAD_CONFIG")]
-    BadConfig,
-    #[serde(rename = "CHECK_FAILED")]
-    CheckFailed,
-    #[serde(rename = "IO")]
-    Io,
-    #[serde(rename = "LOCK_HELD")]
-    LockHeld,
-    #[serde(rename = "UNSUPPORTED_VAULT_VERSION")]
-    UnsupportedVaultVersion,
-    #[serde(rename = "USAGE")]
-    Usage,
-    #[serde(rename = "VAULT_NOT_FOUND")]
-    VaultNotFound,
-    #[serde(rename = "NESTED_VAULT")]
-    NestedVault,
-    #[serde(rename = "NOT_FOUND")]
-    NotFound,
-    #[serde(rename = "AMBIGUOUS")]
-    Ambiguous,
-    #[serde(rename = "TIMELINE_DISABLED")]
-    TimelineDisabled,
-    #[serde(rename = "TIMELINE_HEADING_AMBIGUOUS")]
-    TimelineHeadingAmbiguous,
-    #[serde(rename = "OUTSIDE_VAULT")]
-    OutsideVault,
-    #[serde(rename = "UNKNOWN_TYPE")]
-    UnknownType,
-    #[serde(rename = "BAD_ID")]
-    BadId,
-    #[serde(rename = "ID_EXISTS")]
-    IdExists,
-    #[serde(rename = "SLUG_COLLISION")]
-    SlugCollision,
-    #[serde(rename = "MISSING_TEMPLATE")]
-    MissingTemplate,
-    #[serde(rename = "DEST_EXISTS")]
-    DestExists,
-    #[serde(rename = "NOTE_ARCHIVED")]
-    NoteArchived,
-    #[serde(rename = "ALIAS_NOT_UNIQUE")]
-    AliasNotUnique,
-    #[serde(rename = "RAW_IMMUTABLE")]
-    RawImmutable,
+/// One `EnvelopeCode`: variant, JSON name, process exit, and contract-table rank.
+///
+/// Adding a variant means adding one arm here. The enum, `exit_code`, and
+/// `envelope_codes` are all generated from these arms, so a new code cannot
+/// compile until it is listed, and it then appears in both renderers.
+macro_rules! envelope_code_table {
+    ($(($variant:ident, $name:literal, $exit:expr, $rank:expr),)+) => {
+        /// Codes on `error.code`. Findings use `CHECK_FAILED`. The rest are fatal.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+        pub enum EnvelopeCode {
+            $(
+                #[serde(rename = $name)]
+                $variant,
+            )+
+        }
+
+        pub fn exit_code(code: EnvelopeCode) -> i32 {
+            match code {
+                $(EnvelopeCode::$variant => $exit,)+
+            }
+        }
+
+        fn envelope_rank(code: EnvelopeCode) -> u8 {
+            match code {
+                $(EnvelopeCode::$variant => $rank,)+
+            }
+        }
+
+        fn envelope_codes() -> Vec<EnvelopeCode> {
+            let mut codes = vec![$(EnvelopeCode::$variant,)+];
+            codes.sort_by_key(|code| envelope_rank(*code));
+            codes
+        }
+    };
 }
 
-pub fn exit_code(code: EnvelopeCode) -> i32 {
-    match code {
-        EnvelopeCode::Io => 1,
-        EnvelopeCode::LockHeld => 75,
-        EnvelopeCode::BadConfig
-        | EnvelopeCode::CheckFailed
-        | EnvelopeCode::UnsupportedVaultVersion
-        | EnvelopeCode::Usage
-        | EnvelopeCode::VaultNotFound
-        | EnvelopeCode::NestedVault
-        | EnvelopeCode::NotFound
-        | EnvelopeCode::Ambiguous
-        | EnvelopeCode::TimelineDisabled
-        | EnvelopeCode::TimelineHeadingAmbiguous
-        | EnvelopeCode::OutsideVault
-        | EnvelopeCode::UnknownType
-        | EnvelopeCode::BadId
-        | EnvelopeCode::IdExists
-        | EnvelopeCode::SlugCollision
-        | EnvelopeCode::MissingTemplate
-        | EnvelopeCode::DestExists
-        | EnvelopeCode::NoteArchived
-        | EnvelopeCode::AliasNotUnique
-        | EnvelopeCode::RawImmutable => 2,
-    }
+envelope_code_table! {
+    (BadConfig, "BAD_CONFIG", 2, 2),
+    (CheckFailed, "CHECK_FAILED", 2, 6),
+    (Io, "IO", 1, 4),
+    (LockHeld, "LOCK_HELD", 75, 5),
+    (UnsupportedVaultVersion, "UNSUPPORTED_VAULT_VERSION", 2, 3),
+    (Usage, "USAGE", 2, 0),
+    (VaultNotFound, "VAULT_NOT_FOUND", 2, 1),
+    (NestedVault, "NESTED_VAULT", 2, 7),
+    (NotFound, "NOT_FOUND", 2, 8),
+    (Ambiguous, "AMBIGUOUS", 2, 9),
+    (TimelineDisabled, "TIMELINE_DISABLED", 2, 10),
+    (TimelineHeadingAmbiguous, "TIMELINE_HEADING_AMBIGUOUS", 2, 11),
+    (OutsideVault, "OUTSIDE_VAULT", 2, 12),
+    (UnknownType, "UNKNOWN_TYPE", 2, 13),
+    (BadId, "BAD_ID", 2, 14),
+    (IdExists, "ID_EXISTS", 2, 15),
+    (SlugCollision, "SLUG_COLLISION", 2, 16),
+    (MissingTemplate, "MISSING_TEMPLATE", 2, 17),
+    (DestExists, "DEST_EXISTS", 2, 18),
+    (NoteArchived, "NOTE_ARCHIVED", 2, 19),
+    (AliasNotUnique, "ALIAS_NOT_UNIQUE", 2, 20),
+    (RawImmutable, "RAW_IMMUTABLE", 2, 21),
 }
 
 pub fn success_envelope() -> CheckEnvelope {
@@ -268,6 +253,10 @@ pub fn render_skill_contract() -> String {
          Per-verb success fields are the `data` lines of `render_markdown()`, copied below, \
          then the full check contract those lines come from.\n\n",
     );
+    let source = source.replace(
+        "[`check.schema.json`](check.schema.json)",
+        "`docs/contract/check.schema.json`",
+    );
     for line in source.lines() {
         if line.contains("data") {
             out.push_str(line);
@@ -333,33 +322,6 @@ pub fn render_skill_types() -> Result<String, crate::pack::PackError> {
     Ok(out)
 }
 
-fn envelope_codes() -> [EnvelopeCode; 22] {
-    [
-        EnvelopeCode::Usage,
-        EnvelopeCode::VaultNotFound,
-        EnvelopeCode::BadConfig,
-        EnvelopeCode::UnsupportedVaultVersion,
-        EnvelopeCode::Io,
-        EnvelopeCode::LockHeld,
-        EnvelopeCode::CheckFailed,
-        EnvelopeCode::NestedVault,
-        EnvelopeCode::NotFound,
-        EnvelopeCode::Ambiguous,
-        EnvelopeCode::TimelineDisabled,
-        EnvelopeCode::TimelineHeadingAmbiguous,
-        EnvelopeCode::OutsideVault,
-        EnvelopeCode::UnknownType,
-        EnvelopeCode::BadId,
-        EnvelopeCode::IdExists,
-        EnvelopeCode::SlugCollision,
-        EnvelopeCode::MissingTemplate,
-        EnvelopeCode::DestExists,
-        EnvelopeCode::NoteArchived,
-        EnvelopeCode::AliasNotUnique,
-        EnvelopeCode::RawImmutable,
-    ]
-}
-
 fn envelope_name(code: EnvelopeCode) -> String {
     let name = serde_json::to_string(&code).unwrap_or_default();
     name.trim_matches('"').to_string()
@@ -408,31 +370,7 @@ fn render_markdown() -> String {
          | Code | Exit |\n\
          | --- | --- |\n",
     );
-    let codes = [
-        EnvelopeCode::Usage,
-        EnvelopeCode::VaultNotFound,
-        EnvelopeCode::BadConfig,
-        EnvelopeCode::UnsupportedVaultVersion,
-        EnvelopeCode::Io,
-        EnvelopeCode::LockHeld,
-        EnvelopeCode::CheckFailed,
-        EnvelopeCode::NestedVault,
-        EnvelopeCode::NotFound,
-        EnvelopeCode::Ambiguous,
-        EnvelopeCode::TimelineDisabled,
-        EnvelopeCode::TimelineHeadingAmbiguous,
-        EnvelopeCode::OutsideVault,
-        EnvelopeCode::UnknownType,
-        EnvelopeCode::BadId,
-        EnvelopeCode::IdExists,
-        EnvelopeCode::SlugCollision,
-        EnvelopeCode::MissingTemplate,
-        EnvelopeCode::DestExists,
-        EnvelopeCode::NoteArchived,
-        EnvelopeCode::AliasNotUnique,
-        EnvelopeCode::RawImmutable,
-    ];
-    for code in codes {
+    for code in envelope_codes() {
         let name = serde_json::to_string(&code).unwrap_or_else(|_| "\"?\"".to_string());
         let name = name.trim_matches('"');
         out.push_str(&format!("| `{name}` | {} |\n", exit_code(code)));

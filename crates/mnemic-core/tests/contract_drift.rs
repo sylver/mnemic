@@ -18,11 +18,32 @@ fn committed_contract_matches_the_types() {
 }
 
 fn assert_same(path: &Path, expected: &str) {
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("reference");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let rel = strip_repo(&root, path);
     let committed = std::fs::read_to_string(path)
-        .unwrap_or_else(|err| panic!("{name}: failed to read {}: {err}", path.display()));
-    assert_eq!(committed, expected, "{name}");
+        .unwrap_or_else(|err| panic!("{rel}: failed to read {}: {err}", path.display()));
+    assert_eq!(committed, expected, "{rel}");
+}
+
+fn strip_repo(root: &Path, path: &Path) -> String {
+    let root = normalize(root);
+    let path = normalize(path);
+    path.strip_prefix(&root)
+        .unwrap_or(&path)
+        .display()
+        .to_string()
+}
+
+fn normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
