@@ -313,6 +313,123 @@ fn sha256_hex(path: &Path) -> String {
 }
 
 #[test]
+fn council_record_links_both_shadows_and_logs() {
+    let dir = fixture_vault(true);
+    let created = run(
+        dir.path(),
+        &[
+            "new",
+            "shadow",
+            "Shadow: Bob Example",
+            "--as",
+            "t",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        created.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+
+    let question = "Is the engine unfinished";
+    let council = run(
+        dir.path(),
+        &[
+            "new",
+            "note",
+            &format!("Council: {question}"),
+            "--as",
+            "t",
+            "--field",
+            "tags=council",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        council.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&council.stderr)
+    );
+    let created_body: Value = serde_json::from_slice(&council.stdout).expect("council json");
+    let rel = created_body["data"]["path"].as_str().expect("path");
+    assert!(
+        rel.ends_with("council-is-the-engine-unfinished.md"),
+        "{rel}"
+    );
+    let note_path = dir.path().join(rel);
+    let note = fs::read_to_string(&note_path).expect("council note");
+    assert!(note.contains("tags:") && note.contains("council"), "{note}");
+    let body = "\
+## Question
+
+Is the engine unfinished
+
+## Positions
+
+### Ada Example
+
+The letter says the engine is unfinished [[ada-example-letter]].
+
+### Bob Example
+
+The letter says the engine is unfinished [[ada-example-letter]].
+
+## Agreements
+
+- The engine is unfinished ([[shadow-ada-example]], [[shadow-bob-example]]).
+
+## Disagreements
+
+- No disagreement.
+
+## Cruxes
+
+- No crux yet.
+
+## What would move each shadow
+
+- [[shadow-ada-example]]: a later source that says the engine shipped.
+- [[shadow-bob-example]]: a later source that says the engine shipped.
+
+## Extrapolation flags
+
+- None.
+";
+    let (front, _) = note.split_once("\n---\n").expect("frontmatter");
+    fs::write(&note_path, format!("{front}\n---\n{body}")).expect("write body");
+
+    let line =
+        "2026-11-27 | [[council-is-the-engine-unfinished]] | council: Is the engine unfinished";
+    for shadow in ["shadow-ada-example", "shadow-bob-example"] {
+        let logged = run(dir.path(), &["log", shadow, line, "--json"]);
+        assert_eq!(
+            logged.status.code(),
+            Some(0),
+            "{shadow} {}",
+            String::from_utf8_lossy(&logged.stderr)
+        );
+    }
+
+    let checked = json_at(dir.path(), &["check", "--json"], 0);
+    assert_eq!(checked["ok"], true);
+    assert!(error_codes(&checked).is_empty(), "{checked}");
+
+    for shadow in ["shadow-ada-example", "shadow-bob-example"] {
+        let path = dir.path().join(format!("shadows/{shadow}.md"));
+        let text = fs::read_to_string(&path).expect("shadow");
+        let timeline = text
+            .split("## Timeline")
+            .nth(1)
+            .unwrap_or_else(|| panic!("{shadow} has no timeline\n{text}"));
+        let hits = timeline.matches(line).count();
+        assert_eq!(hits, 1, "{shadow} timeline\n{timeline}");
+    }
+}
+
+#[test]
 fn b6_fixture_without_types_is_unknown_type() {
     let dir = fixture_vault(false);
     let body = json_at(dir.path(), &["check", "--json"], 2);

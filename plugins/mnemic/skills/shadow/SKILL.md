@@ -3,9 +3,10 @@ name: shadow
 description: >-
   Build and use a shadow of one person in a mnemic vault. Install the shadow
   and channel types, create the shadow from named channels, refresh it from
-  new items, consult it with citations, or answer in that person's voice. Use
-  when the user asks for a shadow, a persona, or to keep someone's published
-  thinking current in the vault.
+  new items, consult it with citations, or answer in that person's voice. Ask
+  one question of two or more shadows in a council, and save that record only
+  when the user asks. Use when the user asks for a shadow, a persona, a
+  council, or to keep someone's published thinking current in the vault.
 license: MIT
 compatibility: Requires the mnemic CLI and git. YouTube needs a transcript tool. X needs a raw post reader.
 metadata:
@@ -155,10 +156,67 @@ mnemic search "<question>" --type source --tag domain/<domain> --json
 
 Same reads as consult. Answer in the person's voice, in the first person, until the user ends the persona. Every answer keeps the citation rule: a wikilink to an opened source, or `Extrapolation:` on anything past those notes. Do not drop citations for tone.
 
+## Council
+
+Read [references/council.md](references/council.md) before a council. That file holds the moderator template and the isolation rules.
+
+A council asks one question of two or more shadows. The default is read-only. Write nothing, and do not commit, unless the user asks to save the council.
+
+1. Members are the shadows the user named. When they name a domain instead, search. `search` rejects an empty query, so the query is the word `shadow`, which every shadow title contains.
+
+```bash
+mnemic search shadow --type shadow --tag domain/<d> --json
+```
+
+`get` each hit and keep notes whose type is `shadow`. Fewer than two shadows: say the council needs at least two shadows, and stop. Write nothing.
+
+2. One isolated pass per shadow. Use a subagent when the harness has them. A pass loads only that shadow and its matching sources. It never sees another shadow's pass. Follow the consult rules.
+
+```bash
+mnemic get shadow-<slug> --json
+```
+
+```bash
+mnemic search "<question>" --type source --tag shadow/<slug> --json
+```
+
+When the question fits one domain, run this as well and open only hits that appear in both results:
+
+```bash
+mnemic search "<question>" --type source --tag domain/<d> --json
+```
+
+```bash
+mnemic get <source> --json
+```
+
+Every claim cites a source note with a wikilink, or starts with `Extrapolation:`.
+
+3. Write the moderator output in the order in [references/council.md](references/council.md). Show it to the user. Stop unless they asked to save it.
+
+4. When they asked to save, create one note. Then edit that note's body to the moderator output. Wikilink each member `[[shadow-<slug>]]` and each cited source `[[<source-slug>]]`. Do not hand-edit frontmatter.
+
+```bash
+mnemic new note "Council: <question>" --as <actor> --field tags=council --json
+```
+
+The note slug is the title run through the slug rules. Take it from `data.path`.
+
+5. One timeline line per member. `<date>` is the local date `YYYY-MM-DD`. The summary must not contain `|`.
+
+```bash
+mnemic log shadow-<slug> "<date> | [[<council-slug>]] | council: <question>" --json
+```
+
+6. `mnemic check --json` must exit 0. Then commit with subject `mnemic(<actor>): shadow council <council-slug>`.
+
+Exit 75 retries as in the retry rule.
+
 ## Done when
 
 - Install reported every vault type file it left in place, and wrote none from memory.
 - Create and refresh stored each item once. A second run's `get` skips items already present.
 - `cursor` moved only across stored items. A gap is a timeline line and the cursor stays put.
 - Consult and persona cite a source note or mark extrapolation.
+- A council uses at least two shadows. Each position cites a source note or marks extrapolation. The vault stays unchanged unless the user asked to save the council.
 - `mnemic check --json` exits 0, and the commit subject is `mnemic(<actor>): shadow <mode> <slug>`.
