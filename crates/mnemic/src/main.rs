@@ -629,7 +629,7 @@ fn init(json: bool, vault: Option<PathBuf>, actor: Option<String>) -> ExitCode {
     let report = init_vault(InitRequest {
         target: &target,
         actor: actor.as_deref(),
-        agents_template: include_str!("../templates/AGENTS.md"),
+        readme_template: include_str!("../templates/README.md"),
     });
     match report {
         Ok(report) => emit_init(json, &report),

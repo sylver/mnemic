@@ -18,12 +18,15 @@ fn help_exits_zero_and_shows_usage() {
 }
 
 #[test]
-fn version_prints_0_1_0() {
+fn version_prints_package_version() {
     let long = output(&["--version"]);
     let short = output(&["-V"]);
     assert!(long.status.success());
     assert!(short.status.success());
-    assert_eq!(long.stdout, b"mnemic 0.1.0\n");
+    assert_eq!(
+        long.stdout,
+        format!("mnemic {}\n", env!("CARGO_PKG_VERSION")).as_bytes()
+    );
     assert_eq!(short.stdout, long.stdout);
 }
 

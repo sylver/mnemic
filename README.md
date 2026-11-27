@@ -72,7 +72,7 @@ mnemic init --as <name> --vault /path/to/vault
 
 `--as` writes `actor` into `mnemic.toml` when that file is created. `mnemic new` needs an author. If you omit `--as` and `mnemic.toml` has no `actor`, a later `new` exits with a usage error. You can set `actor` in `mnemic.toml` instead of passing `--as`.
 
-`init` also writes `AGENTS.md`, a `.gitignore` line for `.mnemic/`, and one `.gitkeep` in each empty type folder from the core pack. `.mnemic/` is local tool state. `mnemic.toml` is the vault config. Pass `--vault` as the directory to create. Without `--vault`, `init` uses the current directory and does not walk to a parent vault.
+`init` also writes a short `README.md`, a `.gitignore` line for `.mnemic/`, and one `.gitkeep` in each empty type folder from the core pack. `.mnemic/` is local tool state. `mnemic.toml` is the vault config. Pass `--vault` as the directory to create. Without `--vault`, `init` uses the current directory and does not walk to a parent vault.
 
 ## Commands
 
