@@ -212,6 +212,8 @@ On a rebase conflict in a note, keep both sides' timeline lines and sort them by
 
 One line per built-in type. Folders, fields, timeline, and states are generated in [references/types.md](references/types.md). A vault overlay at `<vault>/types/<type>.toml` replaces that type whole. `<vault>/types/<type>.md` replaces its body template.
 
+Custom types are vault files at `types/<name>.toml`, with an optional body at `types/<name>.md`. After `mnemic check` accepts the pack, `mnemic new <name>` creates a note of that type. Steps, field checks, and shipping types from a skill are in [docs/format.md](../../../../docs/format.md).
+
 - `decision` lives in `decisions/`, timeline on, states `proposed`, `accepted`, `superseded`.
 - `idea` lives in `ideas/`, timeline off, states `open`, `parked`, `adopted`.
 - `journal` lives in `journal/`, timeline on, states `open`, `closed`, required `date`.
