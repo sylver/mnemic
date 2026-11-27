@@ -1,0 +1,12 @@
+{
+  "name": "mnemic",
+  "version": "0.1.1",
+  "description": "A command-line vault of Markdown notes for people and agents.",
+  "author": {
+    "name": "Sylver"
+  },
+  "homepage": "https://github.com/sylver/mnemic",
+  "repository": "https://github.com/sylver/mnemic",
+  "license": "MIT",
+  "keywords": ["notes", "vault", "markdown", "knowledge"]
+}
