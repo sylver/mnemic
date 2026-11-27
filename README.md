@@ -86,6 +86,7 @@ On another machine, clone your vault repository and run `mnemic` inside it.
 - `log`: append a dated line to a note's timeline.
 - `mv`: move or rename a note and rewrite the wikilinks that point to it.
 - `check`: validate front matter and links. `--fix` fills in a missing `id` and `type`.
+- `skill`: print the embedded agent skill and reference files.
 
 Every command accepts `--json` and `--vault <path>`. Run `mnemic <command> --help` for the full options.
 

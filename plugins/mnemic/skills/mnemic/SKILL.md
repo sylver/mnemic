@@ -156,6 +156,20 @@ Success `data`: `id`, `from`, `to`, `alias_added`, `rewritten`. `--no-rewrite` l
 
 Failures: `USAGE`, `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, `RAW_IMMUTABLE` (destination under `sources/raw`), `IO`, `LOCK_HELD`.
 
+### skill
+
+Print the embedded agent skill, or one reference file. This command does not open a vault.
+
+Synopsis: `mnemic skill [--reference <contract|types>] [--json]`
+
+Example: `mnemic skill --json`
+
+No `--reference` prints `SKILL.md`. `--reference contract` prints `references/contract.md`. `--reference types` prints `references/types.md`.
+
+Success `data`: `name`, `version`, `content`. `version` matches `mnemic --version`.
+
+Failures: `USAGE` when `--reference` is not `contract` or `types`.
+
 ## Workflows
 
 Capture: `search` first. If a note already holds the fact, `log` the event or edit that note's compiled truth. Otherwise `new`.

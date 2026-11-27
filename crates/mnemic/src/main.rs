@@ -13,6 +13,7 @@ use mnemic_core::{
     NoteView, ReadError, SearchData, SearchEnvelope, SearchError, SearchRequest, SystemClock,
     UlidGenerator, VaultError,
 };
+use serde::Serialize;
 use serde_json::{json, Value};
 
 fn main() -> ExitCode {
@@ -70,6 +71,49 @@ fn main() -> ExitCode {
             json,
             vault,
         } => mv(note, dest, no_rewrite, json, vault),
+        Command::Skill { reference, json } => skill(reference, json),
+    }
+}
+
+const SKILL_MD: &str = include_str!("../../../plugins/mnemic/skills/mnemic/SKILL.md");
+const SKILL_CONTRACT: &str =
+    include_str!("../../../plugins/mnemic/skills/mnemic/references/contract.md");
+const SKILL_TYPES: &str = include_str!("../../../plugins/mnemic/skills/mnemic/references/types.md");
+
+fn skill(reference: Option<String>, json: bool) -> ExitCode {
+    let (name, content) = match reference.as_deref() {
+        None => ("SKILL.md", SKILL_MD),
+        Some("contract") => ("references/contract.md", SKILL_CONTRACT),
+        Some("types") => ("references/types.md", SKILL_TYPES),
+        Some(other) => {
+            return emit(
+                json,
+                fatal_envelope(EnvelopeCode::Usage, format!("unknown reference: {other}")),
+                exit_code(EnvelopeCode::Usage),
+            );
+        }
+    };
+    if json {
+        let value = SkillEnvelope {
+            ok: true,
+            data: Some(SkillData {
+                name,
+                version: env!("CARGO_PKG_VERSION"),
+                content,
+            }),
+            error: None,
+        };
+        match serde_json::to_string_pretty(&value) {
+            Ok(text) => println!("{text}"),
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::from(1);
+            }
+        }
+        ExitCode::SUCCESS
+    } else {
+        print!("{content}");
+        ExitCode::SUCCESS
     }
 }
 
@@ -676,6 +720,20 @@ fn fatal_from_vault(err: VaultError) -> (EnvelopeCode, String) {
         ),
         VaultError::Io(message) => (EnvelopeCode::Io, message),
     }
+}
+
+#[derive(Serialize)]
+struct SkillEnvelope<'a> {
+    ok: bool,
+    data: Option<SkillData<'a>>,
+    error: Option<Value>,
+}
+
+#[derive(Serialize)]
+struct SkillData<'a> {
+    name: &'a str,
+    version: &'a str,
+    content: &'a str,
 }
 
 fn emit(json: bool, envelope: CheckEnvelope, status: i32) -> ExitCode {
