@@ -29,6 +29,10 @@ pub struct NewRequest<'a> {
     pub id: Option<&'a str>,
     pub actor: Option<&'a str>,
     pub date: Option<&'a str>,
+    /// Source frontmatter `path`. Other types reject the flag.
+    pub path: Option<&'a str>,
+    /// Source frontmatter `url`. Other types reject the flag.
+    pub url: Option<&'a str>,
     pub clock: &'a dyn Clock,
     pub ids: &'a mut UlidGenerator,
     pub lock_timeout: Duration,
@@ -138,6 +142,7 @@ pub fn create_note(request: NewRequest<'_>) -> Result<NewResult, NewError> {
     if let Some(date) = request.date {
         parse_iso_date(date)?;
     }
+    let (source_path, source_url) = source_locators(request.type_name, request.path, request.url)?;
     let (root, config) =
         vault::open_config(request.vault, Some(request.vault)).map_err(vault_error)?;
     let actor = author(request.actor, config.actor.as_deref())?;
@@ -158,6 +163,8 @@ pub fn create_note(request: NewRequest<'_>) -> Result<NewResult, NewError> {
         id,
         actor: &actor,
         date,
+        source_path: source_path.as_deref(),
+        source_url: source_url.as_deref(),
         clock,
         ids,
     };
@@ -168,6 +175,38 @@ pub fn create_note(request: NewRequest<'_>) -> Result<NewResult, NewError> {
         Ok(Err(err)) => Err(err),
         Err(err) => Err(lock_error(err)),
     }
+}
+
+fn nonempty(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}
+
+/// `--path` and `--url` are source locators. Other types reject them.
+/// A source note needs at least one trimmed, non-empty value.
+fn source_locators(
+    type_name: &str,
+    path: Option<&str>,
+    url: Option<&str>,
+) -> Result<(Option<String>, Option<String>), NewError> {
+    if type_name != "source" {
+        if path.is_some() || url.is_some() {
+            return Err(NewError::Usage(
+                "--path and --url apply only to source notes".to_string(),
+            ));
+        }
+        return Ok((None, None));
+    }
+    let path = nonempty(path);
+    let url = nonempty(url);
+    if path.is_none() && url.is_none() {
+        return Err(NewError::Usage(
+            "source notes need a non-empty --path or --url".to_string(),
+        ));
+    }
+    Ok((path, url))
 }
 
 fn author(flag: Option<&str>, configured: Option<&str>) -> Result<String, NewError> {
@@ -187,6 +226,8 @@ struct Draft<'a> {
     id: Option<&'a str>,
     actor: &'a str,
     date: Option<&'a str>,
+    source_path: Option<&'a str>,
+    source_url: Option<&'a str>,
     clock: &'a dyn Clock,
     ids: &'a mut UlidGenerator,
 }
@@ -268,6 +309,8 @@ fn create_locked(
         stamp: &stamp(draft.clock),
         actor: draft.actor,
         date: journal_date.as_deref(),
+        source_path: draft.source_path,
+        source_url: draft.source_url,
         body: &body,
     });
     match txn.create_exclusive(&full, bytes.as_bytes()) {
@@ -421,6 +464,8 @@ struct Rendered<'a> {
     stamp: &'a str,
     actor: &'a str,
     date: Option<&'a str>,
+    source_path: Option<&'a str>,
+    source_url: Option<&'a str>,
     body: &'a str,
 }
 
@@ -437,6 +482,16 @@ fn render_note(note: &Rendered<'_>) -> String {
     if let Some(date) = note.date {
         text.push_str("date: ");
         text.push_str(date);
+        text.push('\n');
+    }
+    if let Some(path) = note.source_path {
+        text.push_str("path: ");
+        text.push_str(&yaml_string(path));
+        text.push('\n');
+    }
+    if let Some(url) = note.source_url {
+        text.push_str("url: ");
+        text.push_str(&yaml_string(url));
         text.push('\n');
     }
     text.push_str("---\n");
