@@ -24,8 +24,8 @@ pub use check::{check_path, invalid_pack_finding, is_note, CheckFatal, CheckRepo
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use contract::{
     exit_code, fatal_envelope, fatal_envelope_with, findings_envelope, render_contract,
-    success_envelope, to_json, CheckData, CheckEnvelope, EnvelopeCode, ErrorObject, Finding,
-    FindingCode, FixChange, FixField,
+    render_skill_contract, render_skill_types, success_envelope, to_json, CheckData, CheckEnvelope,
+    EnvelopeCode, ErrorObject, Finding, FindingCode, FixChange, FixField,
 };
 pub use edit::{EditError, FrontmatterEdit};
 pub use fix::{check_fix, fix_envelope, FixError, FixOutcome, FixRequest, FIX_ID_SEED};

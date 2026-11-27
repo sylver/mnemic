@@ -94,3 +94,4 @@ There is no `index` command, no `migrate` command, and no `mcp` command.
 - Note format, vault root, and `mnemic.toml` keys are in [docs/format.md](docs/format.md).
 - The generated JSON contract (envelopes and error codes) is in [docs/contract/check.md](docs/contract/check.md), with the schema in [docs/contract/check.schema.json](docs/contract/check.schema.json).
 - How to change this repository is in [AGENTS.md](AGENTS.md).
+- Where the agent skill lives, and how generation stays in sync, is in [docs/agents.md](docs/agents.md).
