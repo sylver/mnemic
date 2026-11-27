@@ -64,6 +64,7 @@ pub fn open_config(
         }
         None => discover(start)?,
     };
+
     let text = read_config_text(&root)?;
     let config = parse_vault_config(&text)?;
     Ok((root, config))
@@ -74,17 +75,25 @@ fn read_config_text(root: &Path) -> Result<String, VaultError> {
 }
 
 fn discover(start: &Path) -> Result<PathBuf, VaultError> {
-    let mut cursor = if start.is_dir() {
-        start.to_path_buf()
-    } else if start.is_file() {
-        start
+    let cwd = std::env::current_dir().map_err(|err| VaultError::Io(err.to_string()))?;
+    discover_from(start, &cwd)
+}
+
+/// Walk from `start` to the nearest `mnemic.toml`. A relative `start` is joined
+/// onto `cwd` first so `pop` climbs real parents instead of stopping at `.`.
+fn discover_from(start: &Path, cwd: &Path) -> Result<PathBuf, VaultError> {
+    let joined = cwd.join(start);
+    let mut cursor = if joined.is_dir() {
+        joined
+    } else if joined.is_file() {
+        joined
             .parent()
-            .ok_or_else(|| VaultError::Io(format!("{} has no parent", start.display())))?
+            .ok_or_else(|| VaultError::Io(format!("{} has no parent", joined.display())))?
             .to_path_buf()
     } else {
         return Err(VaultError::Io(format!(
             "{} does not exist",
-            start.display()
+            joined.display()
         )));
     };
     loop {
@@ -198,6 +207,21 @@ mod tests {
             load_vault(&dir),
             Err(VaultError::Unsupported { found: 2, .. })
         ));
+    }
+
+    #[test]
+    fn discover_from_relative_start_walks_to_the_vault() {
+        let dir = tempfile::tempdir().expect("temp");
+        let vault = dir.path().to_path_buf();
+        fs::write(vault.join("mnemic.toml"), "schema_version = 1\n").unwrap();
+        let nested = vault.join("people").join("sub");
+        fs::create_dir_all(&nested).unwrap();
+
+        let from_dot = discover_from(Path::new("."), &nested).unwrap();
+        assert_eq!(from_dot, vault);
+
+        let from_sub = discover_from(Path::new("sub"), &vault.join("people")).unwrap();
+        assert_eq!(from_sub, vault);
     }
 
     fn tempfile_dir() -> PathBuf {
