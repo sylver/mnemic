@@ -90,7 +90,8 @@ fn entry_source(entry: &Value, path: &Path) -> String {
 fn assert_source_exists(source: &str, path: &Path) {
     assert!(
         !source.split(['/', '\\']).any(|part| part == ".."),
-        "{source} contains .."
+        "{source} contains .. ({})",
+        path.display()
     );
     let relative = source.strip_prefix("./").unwrap_or(source);
     let target = repo_root().join(relative);
@@ -101,9 +102,31 @@ fn assert_source_exists(source: &str, path: &Path) {
     );
 }
 
+const SKILL_REL: &str = "plugins/mnemic/skills/mnemic/SKILL.md";
+
+fn assert_skill_mnemic_version(root: &Path) {
+    let path = root.join(SKILL_REL);
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{SKILL_REL}: {err}"));
+    let line = text
+        .lines()
+        .find(|line| line.contains("mnemic-version:"))
+        .unwrap_or_else(|| panic!("{SKILL_REL}: missing mnemic-version"));
+    let value = line
+        .split_once("mnemic-version:")
+        .map(|(_, rest)| rest.split('#').next().unwrap_or("").trim())
+        .unwrap_or_else(|| panic!("{SKILL_REL}: missing mnemic-version"))
+        .trim_matches('"');
+    let version = env!("CARGO_PKG_VERSION");
+    assert_eq!(
+        value, version,
+        "{SKILL_REL}: mnemic-version {value} != {version}"
+    );
+}
+
 #[test]
 fn manifests_and_marketplaces_match_the_contract() {
     let root = repo_root();
+    assert_skill_mnemic_version(&root);
     let agent = root.join("plugins/mnemic/plugin.json");
     let cursor = root.join("plugins/mnemic/.cursor-plugin/plugin.json");
     let claude = root.join("plugins/mnemic/.claude-plugin/plugin.json");
