@@ -9,9 +9,31 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+fn skill_paths() -> Vec<PathBuf> {
+    let root = repo_root().join("plugins/mnemic/skills");
+    let mut paths = Vec::new();
+    for entry in std::fs::read_dir(&root).unwrap_or_else(|err| panic!("skills dir: {err}")) {
+        let entry = entry.expect("skill entry");
+        let path = entry.path().join("SKILL.md");
+        if path.is_file() {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    assert!(
+        paths.len() >= 2,
+        "expected the mnemic and shadow skills, found {paths:?}"
+    );
+    paths
+}
+
 fn skill_text() -> String {
     let path = repo_root().join("plugins/mnemic/skills/mnemic/SKILL.md");
     std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("SKILL.md: {err}"))
+}
+
+fn read_skill(path: &std::path::Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|err| panic!("{}: {err}", path.display()))
 }
 
 fn split_skill(text: &str) -> (String, String) {
@@ -202,55 +224,198 @@ fn synopsis_flags(section: &str) -> Vec<String> {
 
 #[test]
 fn frontmatter_matches_agent_skills_rules() {
-    let (front, _) = split_skill(&skill_text());
-    let name = frontmatter_value(&front, "name");
-    assert!(valid_skill_name(&name), "name {name}");
-    let dir = repo_root().join("plugins/mnemic/skills").join(&name);
-    assert!(dir.is_dir(), "name must match the skill directory");
-    let description = folded_description(&front);
-    assert!(
-        description.len() <= 1024,
-        "description length {}",
-        description.len()
-    );
-    assert_eq!(frontmatter_value(&front, "license"), "MIT");
-    let compatibility = frontmatter_value(&front, "compatibility");
-    assert!(
-        compatibility.len() <= 500,
-        "compatibility length {}",
-        compatibility.len()
-    );
+    for path in skill_paths() {
+        let (front, _) = split_skill(&read_skill(&path));
+        let name = frontmatter_value(&front, "name");
+        assert!(valid_skill_name(&name), "{} name {name}", path.display());
+        let dir = repo_root().join("plugins/mnemic/skills").join(&name);
+        assert!(
+            dir.join("SKILL.md") == path,
+            "name must match the skill directory"
+        );
+        let description = folded_description(&front);
+        assert!(
+            description.len() <= 1024,
+            "{} description length {}",
+            path.display(),
+            description.len()
+        );
+        assert_eq!(frontmatter_value(&front, "license"), "MIT");
+        let compatibility = frontmatter_value(&front, "compatibility");
+        assert!(
+            compatibility.len() <= 500,
+            "{} compatibility length {}",
+            path.display(),
+            compatibility.len()
+        );
+    }
 }
 
 #[test]
 fn version_matches_workspace_and_release_please_marker() {
-    let text = skill_text();
-    let (front, _) = split_skill(&text);
     let version = workspace_version();
-    let line = front
-        .lines()
-        .find(|line| line.contains("mnemic-version:"))
-        .unwrap_or_else(|| panic!("SKILL.md: missing mnemic-version"));
-    assert!(
-        line.contains(&format!("\"{version}\"")),
-        "mnemic-version must equal workspace {version}"
-    );
-    assert!(
-        line.contains("# x-release-please-version"),
-        "mnemic-version line must carry the release-please marker"
-    );
+    for path in skill_paths() {
+        let text = read_skill(&path);
+        let (front, _) = split_skill(&text);
+        let line = front
+            .lines()
+            .find(|line| line.contains("mnemic-version:"))
+            .unwrap_or_else(|| panic!("{}: missing mnemic-version", path.display()));
+        assert!(
+            line.contains(&format!("\"{version}\"")),
+            "{} mnemic-version must equal workspace {version}",
+            path.display()
+        );
+        assert!(
+            line.contains("# x-release-please-version"),
+            "{} mnemic-version line must carry the release-please marker",
+            path.display()
+        );
+    }
 }
 
 #[test]
-fn body_stays_short_and_omits_removed_surface() {
+fn body_stays_within_500_lines() {
+    for path in skill_paths() {
+        let (_, body) = split_skill(&read_skill(&path));
+        let lines = body.lines().count();
+        assert!(lines <= 500, "{} body has {lines} lines", path.display());
+    }
+}
+
+#[test]
+fn mnemic_body_omits_removed_surface() {
     let (_, body) = split_skill(&skill_text());
-    let lines = body.lines().count();
-    assert!(lines < 500, "body has {lines} lines");
     for banned in ["--lock-timeout", "index", "migrate", "mcp", "visibility"] {
         assert!(
             !body.contains(banned),
             "body contains banned string {banned}"
         );
+    }
+}
+
+/// Fenced blocks and inline backtick spans. A fence is consumed whole, so
+/// backticks inside it are not a second span.
+fn code_spans(text: &str) -> Vec<String> {
+    let mut spans = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let fence_at = rest.find("```");
+        let tick_at = rest.find('`');
+        let next = match (fence_at, tick_at) {
+            (Some(fence), Some(tick)) => fence.min(tick),
+            (Some(fence), None) => fence,
+            (None, Some(tick)) => tick,
+            (None, None) => break,
+        };
+        let at_line_start = next == 0 || rest.as_bytes().get(next - 1) == Some(&b'\n');
+        if fence_at == Some(next) && at_line_start {
+            let after = &rest[next + 3..];
+            let Some(newline) = after.find('\n') else {
+                break;
+            };
+            let body = &after[newline + 1..];
+            let end = body.find("\n```").unwrap_or(body.len());
+            spans.push(body[..end].to_string());
+            let consumed = if body[end..].starts_with("\n```") {
+                end + 4
+            } else {
+                end
+            };
+            rest = &body[consumed..];
+            continue;
+        }
+        if tick_at == Some(next) {
+            let after = &rest[next + 1..];
+            let Some(end) = after.find('`') else {
+                break;
+            };
+            spans.push(after[..end].to_string());
+            rest = &after[end + 1..];
+            continue;
+        }
+        rest = &rest[next + 1..];
+    }
+    spans
+}
+
+fn invocation_flag_errors(text: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+    for span in code_spans(text) {
+        for line in span.lines() {
+            let mut rest = line;
+            while let Some(index) = rest.find("mnemic") {
+                let boundary = index == 0
+                    || (!rest.as_bytes()[index - 1].is_ascii_alphanumeric()
+                        && rest.as_bytes()[index - 1] != b'-');
+                let after = &rest[index + "mnemic".len()..];
+                rest = if after.is_empty() { "" } else { &after[1..] };
+                if !boundary {
+                    continue;
+                }
+                let Some(after) = after.strip_prefix(|ch: char| ch.is_whitespace()) else {
+                    continue;
+                };
+                let Some(verb) = after.split_whitespace().next() else {
+                    continue;
+                };
+                if verb.starts_with('-')
+                    || !verb
+                        .chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+                {
+                    continue;
+                }
+                let line_rest = after.split('\n').next().unwrap_or("");
+                let mut flags = Vec::new();
+                for token in line_rest.split_whitespace().skip(1) {
+                    if token == "mnemic" || token.ends_with("mnemic") {
+                        break;
+                    }
+                    let token = token
+                        .trim_matches(|ch: char| matches!(ch, '`' | ',' | '[' | ']' | '(' | ')'));
+                    let Some(name) = token.strip_prefix("--") else {
+                        continue;
+                    };
+                    let name = name
+                        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-')
+                        .next()
+                        .unwrap_or("");
+                    if name.is_empty() || flags.iter().any(|flag| flag == name) {
+                        continue;
+                    }
+                    flags.push(name.to_string());
+                }
+                if !subcommands().iter().any(|name| name == verb) {
+                    errors.push(format!("{verb} is not a mnemic subcommand"));
+                    continue;
+                }
+                let allowed = long_flags(verb);
+                for flag in flags {
+                    if !allowed.iter().any(|item| item == &flag) {
+                        errors.push(format!("--{flag} is not a {verb} flag"));
+                    }
+                }
+            }
+        }
+    }
+    errors
+}
+
+#[test]
+fn invented_flag_in_a_code_span_is_rejected() {
+    let errors = invocation_flag_errors("See `mnemic set --nope`.\n");
+    assert!(
+        errors.iter().any(|error| error.contains("--nope")),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn every_skill_code_span_names_real_flags() {
+    for path in skill_paths() {
+        let errors = invocation_flag_errors(&read_skill(&path));
+        assert!(errors.is_empty(), "{}: {errors:?}", path.display());
     }
 }
 

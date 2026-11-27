@@ -47,6 +47,10 @@
         {
           "type": "generic",
           "path": "plugins/mnemic/skills/mnemic/SKILL.md"
+        },
+        {
+          "type": "generic",
+          "path": "plugins/mnemic/skills/shadow/SKILL.md"
         }
       ],
       "changelog-sections": [
