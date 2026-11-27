@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. The vault `AGENTS.md` decision is superseded by ADR-0013.
 
 ## Date
 

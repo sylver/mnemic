@@ -19,9 +19,9 @@ actor = "sylver"
 
 `mnemic init` scaffolds the target directory. `--vault` is that directory and does not walk to a parent. Without `--vault`, the target is the current directory, also with no walk.
 
-The command writes `mnemic.toml`, `AGENTS.md` from the binary template, `.gitignore` containing `.mnemic/`, and one `.gitkeep` in each empty type folder from the core pack. It does not copy templates into the vault, and it does not run `git init`.
+The command writes `mnemic.toml`, `README.md` from the binary template, `.gitignore` containing `.mnemic/`, and one `.gitkeep` in each empty type folder from the core pack. It does not copy templates into the vault, and it does not run `git init`. It does not write `AGENTS.md`.
 
-Existing files stay as they are. A second run adds only what is missing. An existing `.gitignore` gains a `.mnemic/` line when that line is absent. The rest of the file is left as it was. If `AGENTS.md` already exists at the vault root, `init` does not edit it. `--json` lists that path in `data.skipped` and the command exits 0.
+Existing files stay as they are. A second run adds only what is missing. An existing `.gitignore` gains a `.mnemic/` line when that line is absent. The rest of the file is left as it was. If `README.md` already exists at the vault root, `init` does not edit it. `--json` lists that path in `data.skipped` and the command exits 0.
 
 `init` refuses a target whose parent already has `mnemic.toml` (`NESTED_VAULT`). An existing `mnemic.toml` that is malformed (`BAD_CONFIG`) or newer than this CLI (`UNSUPPORTED_VAULT_VERSION`) is left in place.
 
