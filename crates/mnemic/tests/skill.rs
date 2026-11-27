@@ -1,7 +1,8 @@
+mod common;
+
 use std::path::PathBuf;
 use std::process::Output;
 
-use assert_cmd::Command;
 use clap::CommandFactory;
 use mnemic::cli::Cli;
 
@@ -113,7 +114,7 @@ fn long_flags(subcommand: &str) -> Vec<String> {
 
 fn run(args: &[&str]) -> Output {
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.current_dir(dir.path());
     command.args(args).output().expect("run mnemic")
 }

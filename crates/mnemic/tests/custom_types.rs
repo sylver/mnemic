@@ -1,8 +1,9 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use assert_cmd::Command;
 use serde_json::Value;
 
 fn repo() -> PathBuf {
@@ -39,7 +40,7 @@ fn fixture_vault(with_types: bool) -> tempfile::TempDir {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Output {
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.current_dir(dir);
     command.args(args).output().expect("run mnemic")
 }

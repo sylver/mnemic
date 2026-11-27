@@ -45,7 +45,7 @@ A clean tree is `ok: true`, `data.errors` and `data.warnings` empty, `error: nul
 
 Findings (`BAD_ID`, `MISSING_FIELD`, `BAD_FRONTMATTER`, `UNKNOWN_TYPE`, `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`, `DUPLICATE_ID`, `ALIAS_NOT_UNIQUE`, `SUPERSEDED_WITHOUT_INCOMING`, `SUPERSEDES_CYCLE`, `BROKEN_LINK`, `SHA256_DRIFT`, `AMBIGUOUS`) use `ok: false`, `data` with those findings, and `error.code` `CHECK_FAILED`. Exit 2.
 
-Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal. They are never entries in `data.errors`. `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug or alias matches more than one note (`error.details.candidates` lists `id` and `path`), and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a missing slug both use `NOT_FOUND`. `mv` adds `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE`. A path that leaves the vault is `OUTSIDE_VAULT`.
+Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal. They are never entries in `data.errors`. `VAULT_NOT_FOUND` `error.details` includes `searched_from`, the absolute path the walk started from. When a bound default vault was tried and has no `mnemic.toml`, `details` also includes `default` and `config`. `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug or alias matches more than one note (`error.details.candidates` lists `id` and `path`), and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a missing slug both use `NOT_FOUND`. `mv` adds `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE`. A path that leaves the vault is `OUTSIDE_VAULT`.
 
 `--json` always includes `data.changes` on `--fix`: `{ "path", "field": "id"|"type", "old": null, "new" }`. When findings remain, the shape is `CHECK_FAILED`, exit 2, and `data.changes` still lists what was written. `USAGE`, `VAULT_NOT_FOUND`, `LOCK_HELD`, `IO`, and `OUTSIDE_VAULT` use `data: null`. A path that canonicalizes outside the vault is `OUTSIDE_VAULT` and is not written.
 
@@ -65,6 +65,8 @@ Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`
 
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `from`, `to`, `alias_added`, and `rewritten`. `from` and `to` are vault-relative paths. `alias_added` is true when this call appended the old slug to `aliases`. `rewritten` lists notes whose incoming wikilinks were updated. `--no-rewrite` leaves those wikilinks unchanged, so `rewritten` is empty.
 
+Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `source`, `default`, `config`, and `changed`. `vault` is the resolved root or null. `source` is `cwd`, `default`, or null. `default` is the bound path or null. `config` is the user config path or null. `changed` is true only when this call wrote the file. The show form exits 0 when nothing resolves. It fails only on `BAD_CONFIG` in the user config.
+
 Success is `ok: true`, `error: null`, exit 0. Text output is the file bytes. `--json` `data` has `name`, `version`, and `content`. `name` is `SKILL.md` or `references/<name>.md`. `version` is the CLI version. `content` is the file text.
 
 An unknown `--reference` value is `USAGE`, exit 2, `data: null`.
@@ -83,7 +85,7 @@ A clean tree is `ok: true`, `data.errors` and `data.warnings` empty, `error: nul
 
 Findings (`BAD_ID`, `MISSING_FIELD`, `BAD_FRONTMATTER`, `UNKNOWN_TYPE`, `ALIAS_CONTACT`, `SCHEMA_VERSION_AHEAD`, `INVALID_PACK`, `DUPLICATE_ID`, `ALIAS_NOT_UNIQUE`, `SUPERSEDED_WITHOUT_INCOMING`, `SUPERSEDES_CYCLE`, `BROKEN_LINK`, `SHA256_DRIFT`, `AMBIGUOUS`) use `ok: false`, `data` with those findings, and `error.code` `CHECK_FAILED`. Exit 2.
 
-Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal. They are never entries in `data.errors`. `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug or alias matches more than one note (`error.details.candidates` lists `id` and `path`), and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a missing slug both use `NOT_FOUND`. `mv` adds `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE`. A path that leaves the vault is `OUTSIDE_VAULT`.
+Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal. They are never entries in `data.errors`. `VAULT_NOT_FOUND` `error.details` includes `searched_from`, the absolute path the walk started from. When a bound default vault was tried and has no `mnemic.toml`, `details` also includes `default` and `config`. `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug or alias matches more than one note (`error.details.candidates` lists `id` and `path`), and `OUTSIDE_VAULT` when a path escapes the vault. Those three are fatal. A missing id and a missing slug both use `NOT_FOUND`. `mv` adds `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE`. A path that leaves the vault is `OUTSIDE_VAULT`.
 
 ## Exit codes
 
@@ -212,6 +214,12 @@ Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `from`, `to`, `alias_added`, and `rewritten`. `from` and `to` are vault-relative paths. `alias_added` is true when this call appended the old slug to `aliases`. `rewritten` lists notes whose incoming wikilinks were updated. `--no-rewrite` leaves those wikilinks unchanged, so `rewritten` is empty.
 
 `USAGE`, `NOT_FOUND`, `AMBIGUOUS`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE` are fatal for `mv`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `DEST_EXISTS` means the destination file is already present. `NOTE_ARCHIVED` means the note status is archived. `ALIAS_NOT_UNIQUE` means the old slug is already an alias of another note. `SLUG_COLLISION` means the destination slug equals another note's slug or alias. `RAW_IMMUTABLE` means the destination is under `sources/raw`. `AMBIGUOUS` lists `error.details.candidates` with `path`.
+
+## `mnemic use`
+
+`mnemic use [<path>] [--clear] --json` prints one JSON document. With no argument it writes nothing and reports the vault this directory resolves to. `<path>` binds that vault's canonical root as the default. `--clear` removes the binding.
+
+Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `source`, `default`, `config`, and `changed`. `vault` is the resolved root or null. `source` is `cwd`, `default`, or null. `default` is the bound path or null. `config` is the user config path or null. `changed` is true only when this call wrote the file. The show form exits 0 when nothing resolves. It fails only on `BAD_CONFIG` in the user config.
 
 ## `mnemic skill`
 

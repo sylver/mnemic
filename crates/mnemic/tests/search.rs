@@ -1,11 +1,12 @@
-use assert_cmd::Command;
+mod common;
+
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
 fn run(vault: &Path, args: &[&str]) -> Output {
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.current_dir(vault);
     command.args(args).output().expect("run mnemic")
 }
@@ -230,6 +231,8 @@ fn assert_search_ignores_escape(vault: &Path) {
     let mut child = Command::new(bin);
     child
         .current_dir(vault)
+        .env("XDG_CONFIG_HOME", common::config_home())
+        .env_remove("HOME")
         .args(["search", "phosphor-lantern", "--json"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

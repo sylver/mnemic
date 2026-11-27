@@ -1,10 +1,11 @@
+mod common;
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;
 
-use assert_cmd::Command as AssertCommand;
 use mnemic_core::{check_fix, fix_envelope, to_json, FixRequest, FixedClock, FIX_ID_SEED};
 use serde_json::Value;
 
@@ -33,7 +34,7 @@ fn temp_fixture(name: &str) -> tempfile::TempDir {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Output {
-    let mut command = AssertCommand::cargo_bin("mnemic").unwrap();
+    let mut command = common::mnemic();
     command.current_dir(dir);
     command.args(args).output().unwrap()
 }

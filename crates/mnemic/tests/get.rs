@@ -1,4 +1,5 @@
-use assert_cmd::Command;
+mod common;
+
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
@@ -10,7 +11,7 @@ fn vault() -> String {
 }
 
 fn run(args: &[&str]) -> Output {
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.args(args).output().expect("run mnemic")
 }
 
@@ -108,7 +109,7 @@ fn get_refuses_paths_that_escape_the_vault() {
     )
     .unwrap();
     symlink(&secret, dir.path().join("leak.md")).unwrap();
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic");
+    let mut command = common::mnemic();
     let output = command
         .current_dir(dir.path())
         .args(["get", "leak.md", "--json"])
@@ -151,8 +152,7 @@ fn get_on_a_symlink_to_an_outside_fifo_is_outside_vault() {
     let fifo = outside.path().join("trap");
     mkfifo(&fifo);
     symlink(&fifo, vault.path().join("leak.md")).unwrap();
-    let output = Command::cargo_bin("mnemic")
-        .expect("mnemic")
+    let output = common::mnemic()
         .current_dir(vault.path())
         .args(["get", "leak.md", "--json"])
         .timeout(Duration::from_secs(2))
@@ -179,8 +179,7 @@ fn get_ignores_an_outside_directory_symlink_and_resolves_the_real_note() {
     fs::create_dir(outside.path().join("people")).unwrap();
     fs::write(outside.path().join("people/ada.md"), note).unwrap();
     symlink(outside.path(), vault.path().join("escape")).unwrap();
-    let output = Command::cargo_bin("mnemic")
-        .expect("mnemic")
+    let output = common::mnemic()
         .current_dir(vault.path())
         .args(["get", "ada", "--json"])
         .output()

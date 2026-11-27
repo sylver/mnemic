@@ -1,3 +1,5 @@
+mod user_config;
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -80,6 +82,7 @@ fn main() -> ExitCode {
             json,
             vault,
         } => mv(note, dest, no_rewrite, json, vault),
+        Command::Use { path, clear, json } => use_vault(path, clear, json),
         Command::Skill { reference, json } => skill(reference, json),
     }
 }
@@ -133,11 +136,9 @@ fn mv(
     json: bool,
     vault: Option<PathBuf>,
 ) -> ExitCode {
-    let root = match opened_vault(vault.as_deref(), None) {
+    let root = match open_command(vault.as_deref(), true, json) {
         Ok(vault) => vault.root,
-        Err((code, message)) => {
-            return emit(json, fatal_envelope(code, message), exit_code(code));
-        }
+        Err(code) => return code,
     };
     let dest = dest.to_string_lossy();
     let result = move_note(MoveRequest {
@@ -240,11 +241,9 @@ fn new_note(args: NewArgs) -> ExitCode {
         json,
         vault,
     } = args;
-    let root = match resolve_root(vault.as_deref(), None) {
+    let root = match resolve_command(vault.as_deref(), true, json) {
         Ok(root) => root,
-        Err((code, message)) => {
-            return emit(json, fatal_envelope(code, message), exit_code(code));
-        }
+        Err(code) => return code,
     };
     let mut ids = UlidGenerator::from_seed(random_seed());
     let result = create_note(NewRequest {
@@ -292,9 +291,12 @@ fn set_note(
     json: bool,
     vault: Option<PathBuf>,
 ) -> ExitCode {
-    let start = vault.unwrap_or_else(|| PathBuf::from("."));
+    let root = match resolve_command(vault.as_deref(), true, json) {
+        Ok(root) => root,
+        Err(code) => return code,
+    };
     let result = set_fields(SetRequest {
-        vault: &start,
+        vault: &root,
         note: &note,
         fields: &field,
         adds: &add,
@@ -378,11 +380,9 @@ fn random_seed() -> u64 {
 }
 
 fn log(note: String, text: String, json: bool, vault: Option<PathBuf>) -> ExitCode {
-    let root = match opened_vault(vault.as_deref(), None) {
+    let root = match open_command(vault.as_deref(), true, json) {
         Ok(vault) => vault.root,
-        Err((code, message)) => {
-            return emit(json, fatal_envelope(code, message), exit_code(code));
-        }
+        Err(code) => return code,
     };
     let result = log_note(LogRequest {
         vault: &root,
@@ -470,11 +470,9 @@ fn search(
             );
         }
     };
-    let root = match opened_vault(vault.as_deref(), None) {
+    let root = match open_command(vault.as_deref(), true, json) {
         Ok(vault) => vault.root,
-        Err((code, message)) => {
-            return emit(json, fatal_envelope(code, message), exit_code(code));
-        }
+        Err(code) => return code,
     };
     match search_vault(
         &root,
@@ -523,11 +521,9 @@ fn emit_search(json: bool, data: SearchData) -> ExitCode {
 }
 
 fn show(query: String, json: bool, vault: Option<PathBuf>, links_only: bool) -> ExitCode {
-    let root = match opened_vault(vault.as_deref(), None) {
+    let root = match open_command(vault.as_deref(), true, json) {
         Ok(vault) => vault.root,
-        Err((code, message)) => {
-            return emit(json, fatal_envelope(code, message), exit_code(code));
-        }
+        Err(code) => return code,
     };
     match read_note(&root, &query) {
         Ok(note) => emit_note(json, &note, links_only),
@@ -701,31 +697,11 @@ fn emit_init(json: bool, report: &mnemic_core::InitReport) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn resolve_root(
-    flag: Option<&Path>,
-    start: Option<&Path>,
-) -> Result<PathBuf, (EnvelopeCode, String)> {
-    let default = PathBuf::from(".");
-    let start = start.unwrap_or(default.as_path());
-    mnemic_core::open_config(start, flag)
-        .map(|(root, _config)| root)
-        .map_err(fatal_from_vault)
-}
-
-fn opened_vault(
-    flag: Option<&Path>,
-    start: Option<&Path>,
-) -> Result<mnemic_core::Vault, (EnvelopeCode, String)> {
-    let root = resolve_root(flag, start)?;
-    mnemic_core::load_vault(&root).map_err(fatal_from_vault)
-}
-
 fn check_fix_cmd(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>) -> ExitCode {
-    let vault = match opened_vault(vault.as_deref(), path.as_deref()) {
+    let start = path.clone().unwrap_or_else(|| PathBuf::from("."));
+    let vault = match open_at(&start, vault.as_deref(), path.is_none(), json) {
         Ok(vault) => vault,
-        Err((code, message)) => {
-            return emit(json, fatal_envelope(code, message), exit_code(code));
-        }
+        Err(code) => return code,
     };
     let target = path.unwrap_or_else(|| vault.root.clone());
     match check_fix(FixRequest {
@@ -776,11 +752,10 @@ fn check(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>, fix: bool) -
     if fix {
         return check_fix_cmd(path, json, vault);
     }
-    let vault = match opened_vault(vault.as_deref(), path.as_deref()) {
+    let start = path.clone().unwrap_or_else(|| PathBuf::from("."));
+    let vault = match open_at(&start, vault.as_deref(), path.is_none(), json) {
         Ok(vault) => vault,
-        Err((code, message)) => {
-            return emit(json, fatal_envelope(code, message), exit_code(code));
-        }
+        Err(code) => return code,
     };
     let target = path.unwrap_or_else(|| vault.root.clone());
     match mnemic_core::check_path(&vault, &target) {
@@ -800,6 +775,426 @@ fn check(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>, fix: bool) -
             emit(json, envelope, exit_code(EnvelopeCode::CheckFailed))
         }
     }
+}
+
+enum Source {
+    Cwd,
+    Default,
+    Flag,
+}
+
+struct OpenError {
+    code: EnvelopeCode,
+    message: String,
+    details: BTreeMap<String, Value>,
+}
+
+fn open_command(
+    explicit: Option<&Path>,
+    allow_default: bool,
+    json: bool,
+) -> Result<mnemic_core::Vault, ExitCode> {
+    let root = resolve_command(explicit, allow_default, json)?;
+    match mnemic_core::load_vault(&root) {
+        Ok(vault) => Ok(vault),
+        Err(err) => Err(emit_open(json, open_from_vault(err))),
+    }
+}
+
+fn resolve_command(
+    explicit: Option<&Path>,
+    allow_default: bool,
+    json: bool,
+) -> Result<PathBuf, ExitCode> {
+    match resolve_root(Path::new("."), explicit, allow_default) {
+        Ok((root, _)) => Ok(root),
+        Err(err) => Err(emit_open(json, err)),
+    }
+}
+
+fn open_at(
+    start: &Path,
+    explicit: Option<&Path>,
+    allow_default: bool,
+    json: bool,
+) -> Result<mnemic_core::Vault, ExitCode> {
+    let root = match resolve_root(start, explicit, allow_default) {
+        Ok((root, _)) => root,
+        Err(err) => return Err(emit_open(json, err)),
+    };
+    match mnemic_core::load_vault(&root) {
+        Ok(vault) => Ok(vault),
+        Err(err) => Err(emit_open(json, open_from_vault(err))),
+    }
+}
+
+/// Tier 1 is `--vault` (exact). Tier 2 walks from `start`. Tier 3 reads the
+/// user config only when the walk misses and `allow_default` is set.
+fn resolve_root(
+    start: &Path,
+    explicit: Option<&Path>,
+    allow_default: bool,
+) -> Result<(PathBuf, Source), OpenError> {
+    if let Some(path) = explicit {
+        return match mnemic_core::open_config(start, Some(path)) {
+            Ok((root, _)) => Ok((root, Source::Flag)),
+            Err(err) => Err(open_from_vault(err)),
+        };
+    }
+    let start = searched_from(start);
+    match mnemic_core::open_config(&start, None) {
+        Ok((root, _)) => Ok((root, Source::Cwd)),
+        Err(VaultError::NotFound) if allow_default => open_default(&start),
+        Err(err) => Err(open_from_vault(err)),
+    }
+}
+
+fn open_default(start: &Path) -> Result<(PathBuf, Source), OpenError> {
+    let searched = searched_from(start);
+    let Some(config) = config_file() else {
+        return Err(no_default(&searched));
+    };
+    let bound = match user_config::read(&config) {
+        Ok(bound) => bound,
+        Err(message) => {
+            return Err(OpenError {
+                code: EnvelopeCode::BadConfig,
+                message,
+                details: BTreeMap::new(),
+            });
+        }
+    };
+    let Some(bound) = bound else {
+        return Err(no_default(&searched));
+    };
+    match mnemic_core::open_config(&bound, Some(&bound)) {
+        Ok((root, _)) => Ok((root, Source::Default)),
+        Err(VaultError::NotFound) => Err(stale_default(&searched, &bound, &config)),
+        Err(VaultError::Io(message))
+            if message.contains("not a directory") || message.contains("does not exist") =>
+        {
+            Err(stale_default(&searched, &bound, &config))
+        }
+        Err(err) => Err(open_from_vault(err)),
+    }
+}
+
+fn config_file() -> Option<PathBuf> {
+    user_config::config_path(
+        std::env::var_os("XDG_CONFIG_HOME"),
+        std::env::var_os("HOME"),
+    )
+}
+
+fn searched_from(start: &Path) -> PathBuf {
+    let joined = if start.is_absolute() {
+        start.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(start)
+    };
+    std::fs::canonicalize(&joined).unwrap_or(joined)
+}
+
+fn canonical_root(root: &Path) -> Result<PathBuf, String> {
+    std::fs::canonicalize(root).map_err(|err| err.to_string())
+}
+
+fn no_default(searched: &Path) -> OpenError {
+    let mut details = BTreeMap::new();
+    details.insert(
+        "searched_from".to_string(),
+        Value::String(searched.display().to_string()),
+    );
+    OpenError {
+        code: EnvelopeCode::VaultNotFound,
+        message: format!(
+            "no mnemic.toml in {} or its parents, and no default vault. Run 'mnemic init' to create one or 'mnemic use <path>' to set a default.",
+            searched.display()
+        ),
+        details,
+    }
+}
+
+fn stale_default(searched: &Path, default: &Path, config: &Path) -> OpenError {
+    let mut details = BTreeMap::new();
+    details.insert(
+        "config".to_string(),
+        Value::String(config.display().to_string()),
+    );
+    details.insert(
+        "default".to_string(),
+        Value::String(default.display().to_string()),
+    );
+    details.insert(
+        "searched_from".to_string(),
+        Value::String(searched.display().to_string()),
+    );
+    OpenError {
+        code: EnvelopeCode::VaultNotFound,
+        message: format!(
+            "default vault {} has no mnemic.toml (set in {}). Run 'mnemic use <path>' or 'mnemic use --clear'.",
+            default.display(),
+            config.display()
+        ),
+        details,
+    }
+}
+
+fn open_from_vault(err: VaultError) -> OpenError {
+    let (code, message) = fatal_from_vault(err);
+    OpenError {
+        code,
+        message,
+        details: BTreeMap::new(),
+    }
+}
+
+fn emit_open(json: bool, err: OpenError) -> ExitCode {
+    let envelope = if err.details.is_empty() {
+        fatal_envelope(err.code, err.message)
+    } else {
+        fatal_envelope_with(err.code, err.message, err.details)
+    };
+    emit(json, envelope, exit_code(err.code))
+}
+
+fn use_vault(path: Option<PathBuf>, clear: bool, json: bool) -> ExitCode {
+    if clear {
+        return use_clear(json);
+    }
+    if let Some(path) = path {
+        return use_set(&path, json);
+    }
+    use_show(json)
+}
+
+fn use_show(json: bool) -> ExitCode {
+    match diagnose() {
+        Ok(report) => emit_use(json, &report, true),
+        Err(err) => emit_open(json, err),
+    }
+}
+
+fn use_clear(json: bool) -> ExitCode {
+    let Some(config) = config_file() else {
+        return emit_open(
+            json,
+            OpenError {
+                code: EnvelopeCode::Usage,
+                message: "set HOME or XDG_CONFIG_HOME".to_string(),
+                details: BTreeMap::new(),
+            },
+        );
+    };
+    let changed = match user_config::write(&config, None) {
+        Ok(changed) => changed,
+        Err(message) => {
+            return emit_open(
+                json,
+                OpenError {
+                    code: EnvelopeCode::Io,
+                    message,
+                    details: BTreeMap::new(),
+                },
+            );
+        }
+    };
+    match diagnose() {
+        Ok(mut report) => {
+            report.changed = changed;
+            report.default = None;
+            emit_use(json, &report, false)
+        }
+        Err(err) => emit_open(json, err),
+    }
+}
+
+fn use_set(path: &Path, json: bool) -> ExitCode {
+    let Some(config) = config_file() else {
+        return emit_open(
+            json,
+            OpenError {
+                code: EnvelopeCode::Usage,
+                message: "set HOME or XDG_CONFIG_HOME".to_string(),
+                details: BTreeMap::new(),
+            },
+        );
+    };
+    if path.to_str().is_none() {
+        return emit_open(
+            json,
+            OpenError {
+                code: EnvelopeCode::Usage,
+                message: "vault path must be UTF-8".to_string(),
+                details: BTreeMap::new(),
+            },
+        );
+    }
+    let opened = match mnemic_core::open_config(&searched_from(path), None) {
+        Ok((root, _)) => root,
+        Err(VaultError::NotFound) => {
+            return emit_open(
+                json,
+                OpenError {
+                    code: EnvelopeCode::VaultNotFound,
+                    message: format!("no mnemic.toml in {} or its parents", path.display()),
+                    details: BTreeMap::new(),
+                },
+            );
+        }
+        Err(err) => return emit_open(json, open_from_vault(err)),
+    };
+    let root = match canonical_root(&opened) {
+        Ok(root) => root,
+        Err(message) => {
+            return emit_open(
+                json,
+                OpenError {
+                    code: EnvelopeCode::Io,
+                    message,
+                    details: BTreeMap::new(),
+                },
+            );
+        }
+    };
+    if root.to_str().is_none() {
+        return emit_open(
+            json,
+            OpenError {
+                code: EnvelopeCode::Usage,
+                message: "vault path must be UTF-8".to_string(),
+                details: BTreeMap::new(),
+            },
+        );
+    }
+    let changed = match user_config::write(&config, Some(&root)) {
+        Ok(changed) => changed,
+        Err(message) => {
+            return emit_open(
+                json,
+                OpenError {
+                    code: EnvelopeCode::Io,
+                    message,
+                    details: BTreeMap::new(),
+                },
+            );
+        }
+    };
+    match diagnose() {
+        Ok(mut report) => {
+            report.changed = changed;
+            emit_use(json, &report, false)
+        }
+        Err(err) => emit_open(json, err),
+    }
+}
+
+struct UseReport {
+    vault: Option<String>,
+    source: Option<&'static str>,
+    default: Option<String>,
+    config: Option<String>,
+    changed: bool,
+}
+
+fn diagnose() -> Result<UseReport, OpenError> {
+    let config = config_file();
+    let (default, config_text) = match &config {
+        None => (None, None),
+        Some(path) => {
+            let bound = match user_config::read(path) {
+                Ok(bound) => bound,
+                Err(message) => {
+                    return Err(OpenError {
+                        code: EnvelopeCode::BadConfig,
+                        message,
+                        details: BTreeMap::new(),
+                    });
+                }
+            };
+            (
+                bound.map(|path| path.display().to_string()),
+                Some(path.display().to_string()),
+            )
+        }
+    };
+    let start = searched_from(Path::new("."));
+    let (vault, source) = match mnemic_core::open_config(&start, None) {
+        Ok((root, _)) => (Some(path_text(&root)?), Some("cwd")),
+        Err(VaultError::NotFound) => match &default {
+            Some(bound) => {
+                match mnemic_core::open_config(Path::new(bound), Some(Path::new(bound))) {
+                    Ok((root, _)) => (Some(path_text(&root)?), Some("default")),
+                    Err(_) => (None, None),
+                }
+            }
+            None => (None, None),
+        },
+        Err(err) => return Err(open_from_vault(err)),
+    };
+    Ok(UseReport {
+        vault,
+        source,
+        default,
+        config: config_text,
+        changed: false,
+    })
+}
+
+fn path_text(path: &Path) -> Result<String, OpenError> {
+    let root = canonical_root(path).map_err(|message| OpenError {
+        code: EnvelopeCode::Io,
+        message,
+        details: BTreeMap::new(),
+    })?;
+    root.to_str()
+        .map(ToString::to_string)
+        .ok_or_else(|| OpenError {
+            code: EnvelopeCode::Usage,
+            message: "vault path must be UTF-8".to_string(),
+            details: BTreeMap::new(),
+        })
+}
+
+fn emit_use(json: bool, report: &UseReport, show: bool) -> ExitCode {
+    if json {
+        let body = serde_json::json!({
+            "ok": true,
+            "data": {
+                "vault": report.vault,
+                "source": report.source,
+                "default": report.default,
+                "config": report.config,
+                "changed": report.changed,
+            },
+            "error": null,
+        });
+        match serde_json::to_string_pretty(&body) {
+            Ok(text) => println!("{text}"),
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::from(1);
+            }
+        }
+    } else if show {
+        print_use_human(report);
+    } else {
+        println!("default {}", report.default.as_deref().unwrap_or("none"));
+    }
+    ExitCode::SUCCESS
+}
+
+fn print_use_human(report: &UseReport) {
+    let vault = match (&report.vault, report.source) {
+        (Some(path), Some(source)) => format!("{path} ({source})"),
+        (Some(path), None) => path.clone(),
+        _ => "none".to_string(),
+    };
+    println!("vault    {vault}");
+    println!("default  {}", report.default.as_deref().unwrap_or("none"));
+    println!("config   {}", report.config.as_deref().unwrap_or("none"));
 }
 
 fn fatal_from_vault(err: VaultError) -> (EnvelopeCode, String) {

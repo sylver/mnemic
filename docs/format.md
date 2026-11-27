@@ -4,7 +4,16 @@ This is the v1 note format. `mnemic check` reads it. The JSON envelope is in [th
 
 ## Vault root
 
-A vault is a directory with `mnemic.toml`. The CLI walks from the path you pass, then from its parents, until it finds that file. `--vault` selects the root and does not walk.
+A vault is a directory with `mnemic.toml`. Vault verbs other than `init` resolve the root in this order:
+
+1. `--vault <path>` is that directory and does not walk.
+2. The current directory and its parents. The first directory that holds `mnemic.toml` wins.
+3. The default vault recorded in the user config.
+4. Otherwise the command is `VAULT_NOT_FOUND`.
+
+`check <path>` walks from `<path>` and does not consult the default. `init` does not walk and does not consult the default.
+
+The user config file is `$XDG_CONFIG_HOME/mnemic/config.toml` when `XDG_CONFIG_HOME` is set, non-empty, and absolute. Otherwise it is `$HOME/.config/mnemic/config.toml`. A relative or empty `XDG_CONFIG_HOME` is ignored. The file has one key, `vault`, and the value is an absolute path. `mnemic use <path>` writes the canonical root. `mnemic use --clear` removes the binding.
 
 `mnemic.toml` has two keys:
 

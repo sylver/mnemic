@@ -159,6 +159,17 @@ pub enum Command {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Show or set the default vault.
+    Use {
+        /// Vault directory. Walks up to the root. Omit to show the current resolution.
+        path: Option<PathBuf>,
+        /// Remove the default vault.
+        #[arg(long, conflicts_with = "path")]
+        clear: bool,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+    },
     /// Print the embedded agent skill, or one reference file.
     Skill {
         /// Reference to print: `contract` or `types`. Defaults to `SKILL.md`.

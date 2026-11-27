@@ -1,0 +1,15 @@
+---
+source: crates/mnemic/tests/use_vault.rs
+expression: redacted
+---
+{
+  "data": {
+    "changed": false,
+    "config": "<config>",
+    "default": "<vault-a>",
+    "source": "cwd",
+    "vault": "<vault-b>"
+  },
+  "error": null,
+  "ok": true
+}

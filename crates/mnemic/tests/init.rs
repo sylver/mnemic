@@ -1,8 +1,9 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use assert_cmd::Command;
 use serde_json::Value;
 
 fn copy_tree(from: &Path, to: &Path) {
@@ -27,7 +28,7 @@ fn temp_from_fixture(name: &str) -> tempfile::TempDir {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Output {
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.current_dir(dir);
     command.args(args).output().expect("run mnemic")
 }

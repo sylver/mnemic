@@ -1,12 +1,13 @@
+mod common;
+
 use std::fs;
 use std::path::Path;
 use std::process::Output;
 
-use assert_cmd::Command;
 use serde_json::Value;
 
 fn run(dir: &Path, args: &[&str]) -> Output {
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.current_dir(dir);
     command.args(args).output().expect("run mnemic")
 }
@@ -121,7 +122,12 @@ fn missing_vault_message_stays_vault_not_found() {
     assert_eq!(body["ok"], false);
     assert!(body["data"].is_null());
     assert_eq!(body["error"]["code"], "VAULT_NOT_FOUND");
-    assert_eq!(body["error"]["message"], "no mnemic.toml found");
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("no mnemic.toml in") && message.contains("no default vault"),
+        "{message}"
+    );
+    assert!(body["error"]["details"]["searched_from"].is_string());
 }
 
 #[test]

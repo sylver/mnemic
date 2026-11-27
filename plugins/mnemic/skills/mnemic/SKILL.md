@@ -34,7 +34,7 @@ install -m 755 "$asset" "$HOME/.local/bin/mnemic"
 
 macOS arm64 uses `asset=mnemic-aarch64-apple-darwin` and `shasum -a 256 -c "${asset}.sha256"`.
 
-A vault is the directory that holds `mnemic.toml`, found at the current directory or a parent, unless you pass `--vault <dir>`. `init` does not walk to a parent. Git must be available. The CLI does not commit or push.
+A vault is the directory that holds `mnemic.toml`. Resolution order is `--vault <dir>` (exact, no walk), then the current directory and its parents, then the default vault from `mnemic use`. `check <path>` walks from that path and does not use the default. `init` does not walk to a parent and does not use the default. Pass `--vault <root>` on every call, or run `mnemic use --json` once and pass `data.vault`. Do not rely on the shared default: a bot fleet on one machine must not follow whichever vault the last `use` bound. Git must be available. The CLI does not commit or push.
 
 ## Envelope handling
 
@@ -171,6 +171,18 @@ Example: `mnemic mv notes/scratch.md notes/scratch-moved.md --json --vault .`
 Success `data`: `id`, `from`, `to`, `alias_added`, `rewritten`. `--no-rewrite` leaves wikilinks unchanged, so `rewritten` is empty.
 
 Failures: `USAGE`, `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, `RAW_IMMUTABLE` (destination under `sources/raw`), `IO`, `LOCK_HELD`.
+
+### use
+
+Show or set the default vault. This binding is for a person at a shell. Agents pass `--vault` or the `data.vault` from one `mnemic use --json` call.
+
+Synopsis: `mnemic use [path] --clear --json`
+
+Example: `mnemic use --json`
+
+Success `data`: `vault`, `source` (`cwd`, `default`, or null), `default`, `config`, `changed`. The show form exits 0 when nothing resolves.
+
+Failures: `VAULT_NOT_FOUND` (no vault at or above `<path>`), `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, `USAGE` (`<path>` with `--clear`, a non-UTF-8 path, or no `HOME` and no `XDG_CONFIG_HOME` on set or clear), `IO`.
 
 ### skill
 

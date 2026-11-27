@@ -1,13 +1,14 @@
+mod common;
+
 use std::fs;
 use std::path::Path;
 use std::process::Output;
 
-use assert_cmd::Command;
 use mnemic_core::{create_note, FixedClock, NewRequest, UlidGenerator};
 use serde_json::Value;
 
 fn run(dir: &Path, args: &[&str]) -> Output {
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.current_dir(dir);
     command.args(args).output().expect("run mnemic")
 }

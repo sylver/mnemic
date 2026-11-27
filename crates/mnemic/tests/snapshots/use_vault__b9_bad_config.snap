@@ -1,0 +1,13 @@
+---
+source: crates/mnemic/tests/use_vault.rs
+expression: redacted
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "BAD_CONFIG",
+    "message": "<config>: unknown key `vualt`",
+    "details": {}
+  }
+}

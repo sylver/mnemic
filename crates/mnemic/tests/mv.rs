@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -28,7 +30,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 fn run(vault: &Path, args: &[&str]) -> std::process::Output {
-    let mut command = assert_cmd::Command::cargo_bin("mnemic").expect("bin");
+    let mut command = common::mnemic();
     command.current_dir(vault);
     command.args(args).output().expect("run")
 }
@@ -37,6 +39,8 @@ fn run_crash(vault: &Path, point: &str, args: &[&str]) -> std::process::Output {
     let bin = assert_cmd::cargo::cargo_bin("mnemic");
     Command::new(bin)
         .current_dir(vault)
+        .env("XDG_CONFIG_HOME", common::config_home())
+        .env_remove("HOME")
         .env("MNEMIC_MV_CRASH", point)
         .args(args)
         .output()

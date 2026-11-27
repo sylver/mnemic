@@ -74,7 +74,7 @@ Inside the vault, commands find `mnemic.toml` by walking up from the current dir
 mnemic search ada --vault ~/my-vault
 ```
 
-On another machine, clone your vault repository and run `mnemic` inside it.
+On another machine, clone your vault repository and run `mnemic` inside it. From a directory that is not inside a vault, `mnemic use <path>` binds that vault as the default so later commands resolve it without `--vault`. `mnemic use --clear` removes the binding.
 
 ## Commands
 
@@ -88,6 +88,7 @@ On another machine, clone your vault repository and run `mnemic` inside it.
 - `mv`: move or rename a note and rewrite the wikilinks that point to it.
 - `check`: validate front matter and links. `--fix` fills in a missing `id` and `type`.
 - `skill`: print the embedded agent skill and reference files.
+- `use`: show, set, or clear the default vault.
 
 Every command accepts `--json` and `--vault <path>`. Run `mnemic <command> --help` for the full options.
 
