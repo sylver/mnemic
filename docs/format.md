@@ -10,7 +10,7 @@ A vault is a directory with `mnemic.toml`. The CLI walks from the path you pass,
 
 ```toml
 schema_version = 1
-actor = "sylver"
+actor = "alice"
 ```
 
 `schema_version` is an integer. This CLI accepts `1`. A higher value is refused. `actor` is a non-empty name or bot id. `mnemic check` requires `actor`. `mnemic init` writes `actor` only when `--as` is passed, and only when it creates `mnemic.toml`.
