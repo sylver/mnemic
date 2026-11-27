@@ -175,6 +175,144 @@ fn b5_new_shadow_writes_the_seven_headings_and_checks() {
 }
 
 #[test]
+fn install_copy_create_set_log_checks_clean() {
+    let dir = fixture_vault(false);
+    let assets = repo().join("plugins/mnemic/skills/shadow/assets/types");
+    copy_tree(&assets, &dir.path().join("types"));
+
+    let created = run(
+        dir.path(),
+        &[
+            "new",
+            "shadow",
+            "Shadow: Bob Example",
+            "--as",
+            "t",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        created.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+
+    let channel = run(
+        dir.path(),
+        &[
+            "new",
+            "channel",
+            "x:bobexample",
+            "--as",
+            "t",
+            "--field",
+            "shadow=shadow-bob-example",
+            "--field",
+            "locator=x:bobexample",
+            "--field",
+            "url=https://x.com/bobexample",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        channel.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&channel.stderr)
+    );
+
+    let raw_rel = "sources/raw/shadows/bob-example/x-bobexample/2026-11-26.jsonl";
+    let raw = dir.path().join(raw_rel);
+    fs::create_dir_all(raw.parent().expect("raw parent")).expect("raw dir");
+    fs::write(&raw, "{\"id\":\"1\",\"time\":\"2026-11-26T00:00:00Z\",\"url\":\"https://x.com/bobexample/status/1\",\"text\":\"hello\"}\n").expect("raw");
+    let digest = sha256_hex(&raw);
+
+    let source = run(
+        dir.path(),
+        &[
+            "new",
+            "source",
+            "x:bobexample 2026-11-26",
+            "--as",
+            "t",
+            "--field",
+            "url=https://x.com/bobexample/status/1",
+            "--field",
+            &format!("path={raw_rel}"),
+            "--field",
+            &format!("sha256={digest}"),
+            "--field",
+            "tags=shadow/bob-example",
+            "--field",
+            "tags=domain/example",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        source.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&source.stderr)
+    );
+
+    let updated = run(
+        dir.path(),
+        &[
+            "set",
+            "x-bobexample",
+            "--field",
+            "cursor=2026-11-26",
+            "--field",
+            "last_run_at=2026-11-26",
+            "--field",
+            "state=ready",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        updated.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&updated.stderr)
+    );
+
+    let logged = run(
+        dir.path(),
+        &[
+            "log",
+            "x-bobexample",
+            "2026-11-26 | x:bobexample | stored 1 items, cursor 2026-11-26",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        logged.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&logged.stderr)
+    );
+
+    let body = json_at(dir.path(), &["check", "--json"], 0);
+    assert_eq!(body["ok"], true);
+    assert!(error_codes(&body).is_empty(), "{body}");
+}
+
+fn sha256_hex(path: &Path) -> String {
+    let output = std::process::Command::new("sha256sum")
+        .arg(path)
+        .output()
+        .expect("sha256sum");
+    assert!(output.status.success(), "sha256sum failed");
+    String::from_utf8(output.stdout)
+        .expect("utf-8")
+        .split_whitespace()
+        .next()
+        .expect("digest")
+        .to_string()
+}
+
+#[test]
 fn b6_fixture_without_types_is_unknown_type() {
     let dir = fixture_vault(false);
     let body = json_at(dir.path(), &["check", "--json"], 2);
