@@ -134,15 +134,15 @@ Failures: `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAU
 
 Create a note from a type template.
 
-Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --json --vault <path>`
+Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --path <path> --url <url> --json --vault <path>`
 
 Example: `mnemic new note "Probe note" --as sylver --json --vault .`
 
-Pass `--as` on every `new`. `--date` sets journal `date`.
+Pass `--as` on every `new`. `--date` sets journal `date`. A `source` note needs a non-empty `--path` or `--url` (or both). Other types reject those flags.
 
 Success `data`: `id`, `path`, `noop`. `path` is vault-relative. `noop` is true only when that id is already the note at that path.
 
-Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug or missing author), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
+Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug, missing author, locator flags on a non-source, or a source with no locator), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
 
 ### mv
 

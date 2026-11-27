@@ -10,9 +10,6 @@ created_by: sylver
 status: active
 visibility: private
 ---
-
-A note. See [[01ARZ3NDEKTSV4RRFFQ69G5FAV|this note]].
+A journal entry.
 
 ## Timeline
-
-- 2026-11-23 opened

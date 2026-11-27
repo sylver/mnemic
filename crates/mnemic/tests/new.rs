@@ -198,6 +198,12 @@ fn journal_date_and_second_file() {
     let text = fs::read_to_string(dir.path().join("journal/2026/2026-11-23.md")).unwrap();
     assert!(text.contains("date: 2026-11-23\n"));
     assert!(!text.contains("date: 2026-11-23T"));
+    assert!(!text.contains("[["));
+    let check = run(dir.path(), &["check", "--json"]);
+    assert_eq!(check.status.code(), Some(0), "{}", stderr(&check));
+    let body = json_value(&check);
+    assert_eq!(body["ok"], true);
+    assert!(body["data"]["errors"].as_array().unwrap().is_empty());
     let second = run(
         dir.path(),
         &[
@@ -238,6 +244,106 @@ fn journal_without_date_uses_the_local_calendar_day() {
     assert!(text.contains(&format!("date: {today}\n")), "{text}");
     let year = &today[..4];
     assert!(path.starts_with(&format!("journal/{year}/{today}")));
+    let check = run(dir.path(), &["check", "--json"]);
+    assert_eq!(check.status.code(), Some(0), "{}", stderr(&check));
+    let body = json_value(&check);
+    assert_eq!(body["ok"], true);
+    assert!(body["data"]["errors"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn every_builtin_type_checks_clean() {
+    let dir = init_vault(true);
+    let types = [
+        "person", "org", "place", "project", "idea", "decision", "topic", "source", "journal",
+        "note",
+    ];
+    for type_name in types {
+        let title = format!("Fresh {type_name}");
+        let mut args = vec!["new", type_name, title.as_str(), "--json"];
+        if type_name == "source" {
+            args.extend(["--url", "https://example.com/fresh"]);
+        }
+        let output = run(dir.path(), &args);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{type_name}: {}",
+            stderr(&output)
+        );
+    }
+    let check = run(dir.path(), &["check", "--json"]);
+    assert_eq!(check.status.code(), Some(0), "{}", stderr(&check));
+    let body = json_value(&check);
+    assert_eq!(body["ok"], true);
+    assert!(body["data"]["errors"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn source_without_locator_is_usage_and_writes_nothing() {
+    let dir = init_vault(true);
+    let output = run(dir.path(), &["new", "source", "Missing Locator", "--json"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert_eq!(code(&output), "USAGE");
+    let blank = run(
+        dir.path(),
+        &["new", "source", "Blank Url", "--url", "   ", "--json"],
+    );
+    assert_eq!(blank.status.code(), Some(2), "{}", stderr(&blank));
+    assert_eq!(code(&blank), "USAGE");
+    let sources = dir.path().join("sources");
+    let wrote = sources.exists()
+        && fs::read_dir(&sources).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "md")
+        });
+    assert!(!wrote);
+}
+
+#[test]
+fn source_with_path_checks_clean() {
+    let dir = init_vault(true);
+    let output = run(
+        dir.path(),
+        &[
+            "new",
+            "source",
+            "Local Blob",
+            "--path",
+            "sources/raw/blob.txt",
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let text = fs::read_to_string(dir.path().join("sources/local-blob.md")).unwrap();
+    assert!(text.contains("path: \"sources/raw/blob.txt\"\n"));
+    let check = run(dir.path(), &["check", "--json"]);
+    assert_eq!(check.status.code(), Some(0), "{}", stderr(&check));
+    let body = json_value(&check);
+    assert_eq!(body["ok"], true);
+    assert!(body["data"]["errors"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn person_rejects_url_and_writes_nothing() {
+    let dir = init_vault(true);
+    let output = run(
+        dir.path(),
+        &[
+            "new",
+            "person",
+            "X",
+            "--url",
+            "https://example.com",
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert_eq!(code(&output), "USAGE");
+    assert!(!dir.path().join("people/x.md").exists());
 }
 
 #[test]
@@ -303,6 +409,8 @@ fn injected_clock_and_ulid_are_stable() {
         id: None,
         actor: Some("sylver"),
         date: None,
+        path: None,
+        url: None,
         clock: &clock,
         ids: &mut ids,
         lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,
