@@ -28,6 +28,25 @@
           "type": "toml",
           "path": "crates/mnemic/Cargo.toml",
           "jsonpath": "$.dependencies.mnemic-core.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/mnemic/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/mnemic/.cursor-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/mnemic/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "plugins/mnemic/skills/mnemic/SKILL.md"
         }
       ],
       "changelog-sections": [

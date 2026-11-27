@@ -106,6 +106,18 @@ Every command accepts `--json` and `--vault <path>`. Run `mnemic <command> --hel
 
 With `--json`, every command prints one envelope: `{"ok": true, "data": {…}, "error": null}` on success, or `ok: false` with an `error.code` on failure. Exit codes are stable: `0` success, `2` usage or validation error, `1` I/O error, and `75` (`LOCK_HELD`) when another writer holds the vault lock, so retry. The full contract is in [docs/contract/check.md](docs/contract/check.md), with a [JSON Schema](docs/contract/check.schema.json) for `check`.
 
+### Use with agents
+
+Install the `mnemic` binary first (see [Install](#install)). The skill in this repository is the same one each harness loads.
+
+| Harness | Install |
+| --- | --- |
+| Claude Code | `claude plugin marketplace add sylver/mnemic`, then `claude plugin install mnemic@mnemic` |
+| Codex | `plugin marketplace add sylver/mnemic` |
+| Cursor | Team Marketplace import of `.cursor-plugin/marketplace.json` |
+| Grok Bot | Install once as a global user skill |
+| Other harnesses | `mnemic skill` |
+
 ## Documentation
 
 - [Note format and vault layout](docs/format.md)
