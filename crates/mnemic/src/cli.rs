@@ -133,4 +133,13 @@ pub enum Command {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Print the embedded agent skill, or one reference file.
+    Skill {
+        /// Reference to print: `contract` or `types`. Defaults to `SKILL.md`.
+        #[arg(long, value_name = "contract|types")]
+        reference: Option<String>,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
+    },
 }

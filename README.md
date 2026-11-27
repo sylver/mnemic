@@ -86,6 +86,7 @@ These are the v1 commands.
 - `links` lists outgoing links, backlinks, and broken links for one note.
 - `new` creates a note from a type template.
 - `mv` moves or renames a note and rewrites incoming wikilinks.
+- `skill` prints the embedded agent skill, or one reference file.
 
 There is no `index` command, no `migrate` command, and no `mcp` command.
 

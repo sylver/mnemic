@@ -487,6 +487,7 @@ dependencies = [
  "clap",
  "insta",
  "mnemic-core",
+ "serde",
  "serde_json",
  "tempfile",
 ]

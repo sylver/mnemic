@@ -127,3 +127,13 @@ Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `from`, `to`, `alias_added`, and `rewritten`. `from` and `to` are vault-relative paths. `alias_added` is true when this call appended the old slug to `aliases`. `rewritten` lists notes whose incoming wikilinks were updated. `--no-rewrite` leaves those wikilinks unchanged, so `rewritten` is empty.
 
 `USAGE`, `NOT_FOUND`, `AMBIGUOUS`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE` are fatal for `mv`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `DEST_EXISTS` means the destination file is already present. `NOTE_ARCHIVED` means the note status is archived. `ALIAS_NOT_UNIQUE` means the old slug is already an alias of another note. `SLUG_COLLISION` means the destination slug equals another note's slug or alias. `RAW_IMMUTABLE` means the destination is under `sources/raw`. `AMBIGUOUS` lists `error.details.candidates` with `path`.
+
+## `mnemic skill`
+
+### mnemic skill
+
+`mnemic skill [--reference <contract|types>] [--json]` prints the embedded agent skill. It does not open a vault. No `--reference` prints `SKILL.md`. `--reference contract` prints `references/contract.md`. `--reference types` prints `references/types.md`.
+
+Success is `ok: true`, `error: null`, exit 0. Text output is the file bytes. `--json` `data` has `name`, `version`, and `content`. `name` is `SKILL.md` or `references/<name>.md`. `version` is the CLI version. `content` is the file text.
+
+An unknown `--reference` value is `USAGE`, exit 2, `data: null`.
