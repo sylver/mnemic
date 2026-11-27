@@ -152,13 +152,23 @@ A `source` note takes `--path` and `--url`. At least one must be non-empty after
 
 The same `--id` at the same path is a success no-op and does not rewrite the file. The same `--id` at a different path is `ID_EXISTS`. The new filename slug must not equal any other note's slug or alias, compared case-insensitively after NFC. That is `SLUG_COLLISION`, including a slug in another folder. Notes that already share a slug stay. `new` does not add another. The create is `O_EXCL` under the vault write lock. A destination that canonicalizes outside the vault is `OUTSIDE_VAULT` and is not written. `sources/raw/` is not a create destination.
 
-## Vault overlays
+## Custom types
+
+1. Write `<vault>/types/<name>.toml` with the type pack schema. Pick a folder no other type uses.
+2. Optionally write `<vault>/types/<name>.md` as the body template. With no template, `new` fails with `MISSING_TEMPLATE`.
+3. Run `mnemic check`. A bad file is `INVALID_PACK` and names the path.
+4. Create notes with `mnemic new <name> "<title>" --field key=value`. Change fields later with `mnemic set`.
+5. Commit `types/` with the vault. Every clone and every bot gets the same types.
 
 `<vault>/types/*.toml` is the only overlay. The file stem is the type name, and that name is one path component. `check` loads that directory from the vault root at the start of a run. Files there are pack files. `check` does not treat them as notes. A symlink at `types/` or at a pack or template file, and a path that canonicalizes outside the vault, is `INVALID_PACK`. The finding names the vault-relative path and does not include the other file's text.
 
 A new name adds a custom type. The same name replaces the built-in declaration whole, including `folder`, `schema_version`, `state`, and `field`. There is no field-by-field merge. The overlay's `schema_version` is the version `SCHEMA_VERSION_AHEAD` uses for that type, including when it is lower than the built-in it replaced. A lower version is not `INVALID_PACK`.
 
 `folder` may change. Two types that claim the same folder string are `INVALID_PACK`, because a later `--fix` could not choose a folder. Malformed overlay TOML is `INVALID_PACK` and the process exits 2. There is no `[packs]` table.
+
+`check` validates custom fields the same way it validates built-in fields. A required field that is absent is `MISSING_FIELD`. A link on a field with `target` that does not resolve is `BROKEN_LINK`. `check` does not validate `state` values, the `date` kind, or that a resolved link target has the named type. Unknown keys are kept.
+
+A skill ships types in `assets/types/`. Read those files from the skill's own `assets/types/` first. When the skill is installed as a single file, read them from the release tag `v<metadata.mnemic-version>`. Copy a file into `<vault>/types/` when it is missing. When the bytes already match, leave the file alone. Never overwrite a file whose bytes differ. The reference types live at [plugins/mnemic/skills/shadow/](../plugins/mnemic/skills/shadow/).
 
 ## Frontmatter edits
 
