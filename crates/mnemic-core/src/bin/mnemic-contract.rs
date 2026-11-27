@@ -1,12 +1,17 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
-    let dir = match args.next() {
+    let root = workspace_root();
+    let contract_dir = match args.next() {
         Some(path) => PathBuf::from(path),
-        None => PathBuf::from("docs/contract"),
+        None => root.join("docs/contract"),
     };
     if args.next().is_some() {
         eprintln!("usage: mnemic-contract [output-dir]");
@@ -19,15 +24,41 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    if let Err(err) = fs::create_dir_all(&dir) {
+    let types = match mnemic_core::render_skill_types() {
+        Ok(rendered) => rendered,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    };
+    if let Err(err) = write_pair(
+        &contract_dir,
+        &[
+            ("check.schema.json", schema.as_str()),
+            ("check.md", markdown.as_str()),
+        ],
+    ) {
         eprintln!("{err}");
         return ExitCode::from(1);
     }
-    if let Err(err) = fs::write(dir.join("check.schema.json"), schema)
-        .and_then(|()| fs::write(dir.join("check.md"), markdown))
-    {
+    let references = root.join("plugins/mnemic/skills/mnemic/references");
+    if let Err(err) = write_pair(
+        &references,
+        &[
+            ("contract.md", mnemic_core::render_skill_contract().as_str()),
+            ("types.md", types.as_str()),
+        ],
+    ) {
         eprintln!("{err}");
         return ExitCode::from(1);
     }
     ExitCode::SUCCESS
+}
+
+fn write_pair(dir: &Path, files: &[(&str, &str)]) -> std::io::Result<()> {
+    fs::create_dir_all(dir)?;
+    for (name, body) in files {
+        fs::write(dir.join(name), body)?;
+    }
+    Ok(())
 }
