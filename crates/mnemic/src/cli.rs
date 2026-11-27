@@ -110,6 +110,12 @@ pub enum Command {
         /// Journal `date` as `YYYY-MM-DD`. Defaults to the process local date.
         #[arg(long)]
         date: Option<String>,
+        /// Source frontmatter `path`. Rejected for every other type.
+        #[arg(long)]
+        path: Option<String>,
+        /// Source frontmatter `url`. Rejected for every other type.
+        #[arg(long)]
+        url: Option<String>,
         /// Print the JSON envelope.
         #[arg(long)]
         json: bool,
@@ -132,5 +138,14 @@ pub enum Command {
         /// Vault root. Defaults to the nearest parent `mnemic.toml`.
         #[arg(long)]
         vault: Option<PathBuf>,
+    },
+    /// Print the embedded agent skill, or one reference file.
+    Skill {
+        /// Reference to print: `contract` or `types`. Defaults to `SKILL.md`.
+        #[arg(long, value_name = "contract|types")]
+        reference: Option<String>,
+        /// Print the JSON envelope.
+        #[arg(long)]
+        json: bool,
     },
 }

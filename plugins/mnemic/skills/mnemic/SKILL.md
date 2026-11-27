@@ -134,15 +134,15 @@ Failures: `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAU
 
 Create a note from a type template.
 
-Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --json --vault <path>`
+Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --path <path> --url <url> --json --vault <path>`
 
 Example: `mnemic new note "Probe note" --as sylver --json --vault .`
 
-Pass `--as` on every `new`. `--date` sets journal `date`.
+Pass `--as` on every `new`. `--date` sets journal `date`. A `source` note needs a non-empty `--path` or `--url` (or both). Other types reject those flags.
 
 Success `data`: `id`, `path`, `noop`. `path` is vault-relative. `noop` is true only when that id is already the note at that path.
 
-Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug or missing author), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
+Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug, missing author, locator flags on a non-source, or a source with no locator), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
 
 ### mv
 
@@ -155,6 +155,20 @@ Example: `mnemic mv notes/scratch.md notes/scratch-moved.md --json --vault .`
 Success `data`: `id`, `from`, `to`, `alias_added`, `rewritten`. `--no-rewrite` leaves wikilinks unchanged, so `rewritten` is empty.
 
 Failures: `USAGE`, `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, `RAW_IMMUTABLE` (destination under `sources/raw`), `IO`, `LOCK_HELD`.
+
+### skill
+
+Print the embedded agent skill, or one reference file. This command does not open a vault.
+
+Synopsis: `mnemic skill [--reference <contract|types>] [--json]`
+
+Example: `mnemic skill --json`
+
+No `--reference` prints `SKILL.md`. `--reference contract` prints `references/contract.md`. `--reference types` prints `references/types.md`.
+
+Success `data`: `name`, `version`, `content`. `version` matches `mnemic --version`.
+
+Failures: `USAGE` when `--reference` is not `contract` or `types`.
 
 ## Workflows
 
