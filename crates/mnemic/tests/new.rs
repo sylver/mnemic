@@ -411,6 +411,7 @@ fn injected_clock_and_ulid_are_stable() {
         date: None,
         path: None,
         url: None,
+        fields: &[],
         clock: &clock,
         ids: &mut ids,
         lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,

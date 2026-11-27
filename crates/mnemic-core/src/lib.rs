@@ -6,6 +6,7 @@ mod check;
 mod clock;
 mod contract;
 mod edit;
+mod fields;
 mod fix;
 mod frontmatter;
 mod index;
@@ -16,6 +17,7 @@ mod new;
 mod pack;
 mod read;
 mod search;
+mod set;
 mod ulid;
 mod vault;
 pub mod write;
@@ -43,6 +45,7 @@ pub use read::{read_note, Candidate, NoteView, ReadError};
 pub use search::{
     search_vault, SearchData, SearchEnvelope, SearchError, SearchHit, SearchRequest, SearchSection,
 };
+pub use set::{set_fields, SetData, SetError, SetRequest, SetResult, SetSuccess};
 pub use ulid::{is_ulid, UlidGenerator};
 pub use vault::{
     load_vault, open_config, open_vault, parse_vault_config, Vault, VaultConfig, VaultError,

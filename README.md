@@ -80,6 +80,7 @@ On another machine, clone your vault repository and run `mnemic` inside it.
 
 - `init`: scaffold a vault in a directory.
 - `new`: create a note from its type template.
+- `set`: write declared frontmatter fields, and append list items with `--add`.
 - `get`: print one note by id, slug, alias, or path.
 - `search`: find notes where every token matches. Filter with `--type`, `--tag`, and `--since`.
 - `links`: list outgoing links, backlinks, and broken links for a note.

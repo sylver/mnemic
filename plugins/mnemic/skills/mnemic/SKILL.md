@@ -134,7 +134,7 @@ Failures: `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAU
 
 Create a note from a type template.
 
-Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --path <path> --url <url> --json --vault <path>`
+Synopsis: `mnemic new <type> <title> --id <ulid> --as <actor> --date <date> --path <path> --url <url> --field <key=value> --json --vault <path>`
 
 Example: `mnemic new note "Probe note" --as sylver --json --vault .`
 
@@ -142,7 +142,23 @@ Pass `--as` on every `new`. `--date` sets journal `date`. A `source` note needs 
 
 Success `data`: `id`, `path`, `noop`. `path` is vault-relative. `noop` is true only when that id is already the note at that path.
 
-Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug, missing author, locator flags on a non-source, or a source with no locator), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
+Failures: `UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS` (that id is already another path), `SLUG_COLLISION` (the new slug equals another slug or alias), `MISSING_TEMPLATE`, `USAGE` (empty slug, missing author, locator flags on a non-source, a source with no locator, a bad `--field`, or a missing required field), `OUTSIDE_VAULT`, `IO`, `LOCK_HELD`.
+
+`--field key=value` sets a declared field, `state`, `tags`, or `title` when the note is created. Repeat it to build a list. Do not combine `--path` with `--field path=`, `--url` with `--field url=`, or `--date` with `--field date=`.
+
+### set
+
+Set declared frontmatter fields on one note. Do not hand-edit YAML.
+
+Synopsis: `mnemic set <note> --field <key=value> --add <key=value> --json --vault <path>`
+
+Example: `mnemic set ada --field email=ada@example.com --field state=current --json --vault .`
+
+Pass at least one `--field` or `--add`. `--field` sets a declared field, `state`, `tags`, or `title`. `--add` appends one `strings` or `tags` item. A repeated `--field` builds a list. Do not pass `--field` and `--add` for the same key.
+
+Success `data`: `id`, `path`, `noop`, `changed`. `changed` lists keys whose bytes changed, in argument order, without `updated`. `noop` is true when nothing changed. The file is not written and `updated` is not stamped.
+
+Failures: `USAGE` (bad key, kind, value, or state; a multi-line existing value; no frontmatter; `sources/raw/`), `NOT_FOUND`, `AMBIGUOUS` with `error.details.candidates`, `OUTSIDE_VAULT`, `UNKNOWN_TYPE`, `VAULT_NOT_FOUND`, `IO`, `LOCK_HELD`.
 
 ### mv
 

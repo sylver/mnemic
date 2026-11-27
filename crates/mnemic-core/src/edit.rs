@@ -134,18 +134,116 @@ impl FrontmatterEdit {
         out.push_str(&source[at..]);
         Ok(out)
     }
+
+    /// Replace a top-level scalar, one-line flow value, or pure block sequence
+    /// with one flow line. Block scalars and nested mappings are refused.
+    /// Every other byte is copied.
+    pub fn replace_sequence(source: &str, key: &str, flow_yaml: &str) -> Result<String, EditError> {
+        one_line(key, flow_yaml)?;
+        let note = frontmatter::parse_note(source)?;
+        let span = top_level_key(source, &note.keys, key)
+            .ok_or_else(|| EditError::KeyMissing(key.to_string()))?;
+        let (line, _) = line_after(source, span.span.end);
+        let offset = value_offset(line);
+        let value = scalar_on_line(&line[offset..]);
+        if is_block_scalar(value) {
+            return Err(EditError::MultilineValue {
+                key: key.to_string(),
+            });
+        }
+        if !value_spans_lines(source, span.span.end) {
+            return Self::replace(source, key, flow_yaml);
+        }
+        if !value.is_empty() || !pure_block_sequence(source, span.span.end) {
+            return Err(EditError::MultilineValue {
+                key: key.to_string(),
+            });
+        }
+        let start = span.span.end + offset;
+        let end = block_sequence_end(source, span.span.end);
+        let nl = newline_of(source, &note);
+        let mut out = String::with_capacity(source.len() + flow_yaml.len());
+        out.push_str(&source[..start]);
+        if !out.ends_with(' ') {
+            out.push(' ');
+        }
+        out.push_str(flow_yaml);
+        out.push_str(nl);
+        out.push_str(&source[end..]);
+        Ok(out)
+    }
 }
 
-fn yaml_scalar(item: &str) -> String {
-    let plain = !item.is_empty()
-        && item
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_');
-    if plain {
+pub(crate) fn yaml_scalar(item: &str) -> String {
+    if yaml_plain(item) {
         item.to_string()
     } else {
         format!("\"{}\"", item.replace('\\', "\\\\").replace('"', "\\\""))
     }
+}
+
+fn yaml_plain(item: &str) -> bool {
+    !item.is_empty()
+        && item
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        && !yaml_reserved(item)
+        && !yaml_number(item)
+}
+
+fn yaml_reserved(item: &str) -> bool {
+    matches!(
+        item.to_ascii_lowercase().as_str(),
+        "true" | "false" | "null" | "yes" | "no" | "on" | "off" | "~"
+    )
+}
+
+fn yaml_number(item: &str) -> bool {
+    let lower = item.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        ".inf" | "-.inf" | "+.inf" | ".nan" | "-.nan" | "+.nan"
+    ) {
+        return true;
+    }
+    let rest = item.strip_prefix(['+', '-']).unwrap_or(item);
+    if let Some(hex) = rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
+        return !hex.is_empty() && hex.chars().all(|ch| ch.is_ascii_hexdigit());
+    }
+    if let Some(octal) = rest.strip_prefix("0o").or_else(|| rest.strip_prefix("0O")) {
+        return !octal.is_empty() && octal.chars().all(|ch| matches!(ch, '0'..='7'));
+    }
+    let bytes = rest.as_bytes();
+    let mut index = 0;
+    let mut saw_digit = false;
+    while index < bytes.len() && bytes[index].is_ascii_digit() {
+        saw_digit = true;
+        index += 1;
+    }
+    if index < bytes.len() && bytes[index] == b'.' {
+        index += 1;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            saw_digit = true;
+            index += 1;
+        }
+    }
+    if index < bytes.len() && (bytes[index] == b'e' || bytes[index] == b'E') {
+        if !saw_digit {
+            return false;
+        }
+        index += 1;
+        if index < bytes.len() && (bytes[index] == b'+' || bytes[index] == b'-') {
+            index += 1;
+        }
+        let start = index;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+        }
+        if index == start {
+            return false;
+        }
+    }
+    index == bytes.len() && saw_digit
 }
 
 fn sequence_contains(value: Option<&serde_json::Value>, item: &str) -> bool {
@@ -326,6 +424,40 @@ fn value_offset(line: &str) -> usize {
 
 fn is_block_scalar(value: &str) -> bool {
     matches!(value.as_bytes().first(), Some(b'|' | b'>'))
+}
+
+fn scalar_on_line(text: &str) -> &str {
+    match trailing_comment(text) {
+        Some(comment) => text[..comment].trim(),
+        None => text.trim(),
+    }
+}
+
+fn pure_block_sequence(source: &str, key_end: usize) -> bool {
+    let (_, line_len) = line_after(source, key_end);
+    let mut cursor = key_end + line_len;
+    if source.as_bytes().get(cursor) == Some(&b'\r') {
+        cursor += 1;
+    }
+    if source.as_bytes().get(cursor) == Some(&b'\n') {
+        cursor += 1;
+    }
+    let mut items = 0;
+    for raw in source[cursor..].split_inclusive('\n') {
+        let bare = raw.trim_end_matches(['\n', '\r']);
+        if bare == "---" || (!bare.is_empty() && !bare.starts_with([' ', '\t'])) {
+            break;
+        }
+        let trimmed = bare.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if !trimmed.starts_with("- ") {
+            return false;
+        }
+        items += 1;
+    }
+    items > 0
 }
 
 /// Index of the space before a `#` that sits outside quotes. `None` when the
@@ -538,6 +670,76 @@ Hello\n\
         let missing = "---\ntitle: Ada\n---\n";
         let edited = FrontmatterEdit::append_sequence_item(missing, "aliases", "old-slug").unwrap();
         assert_eq!(edited, "---\ntitle: Ada\naliases: [old-slug]\n---\n");
+    }
+
+    #[test]
+    fn replace_sequence_keeps_bytes_outside_the_value() {
+        let lf = "---\n# keep\ntags:\n  - a\n  - b\ntitle: \"Hi\"\n---\n\nBody stays\n";
+        let edited = FrontmatterEdit::replace_sequence(lf, "tags", "[a, b]").expect("lf");
+        assert_eq!(
+            edited,
+            "\
+---\n\
+# keep\n\
+tags: [a, b]\n\
+title: \"Hi\"\n\
+---\n\
+\n\
+Body stays\n"
+        );
+        let crlf = lf.replace('\n', "\r\n");
+        let edited = FrontmatterEdit::replace_sequence(&crlf, "tags", "[a, b]").expect("crlf");
+        assert_eq!(
+            edited,
+            crlf.replace("tags:\r\n  - a\r\n  - b\r\n", "tags: [a, b]\r\n")
+        );
+        let scalar = "---\nemail: old  # keep\n---\n";
+        let edited =
+            FrontmatterEdit::replace_sequence(scalar, "email", "\"a@b.c\"").expect("scalar");
+        assert_eq!(edited, "---\nemail: \"a@b.c\"  # keep\n---\n");
+        let flow = "---\ntags: [a]\n---\n";
+        let edited = FrontmatterEdit::replace_sequence(flow, "tags", "[a, b]").expect("flow");
+        assert_eq!(edited, "---\ntags: [a, b]\n---\n");
+    }
+
+    #[test]
+    fn replace_sequence_refuses_block_scalars_and_nested_mappings() {
+        let cases = [
+            "---\nk: |\n  hello\n---\n",
+            "---\nk: >\n  hello\n---\n",
+            "---\nk:\n  a: 1\n---\n",
+            "---\nk: value\n  more\n---\n",
+        ];
+        for source in cases {
+            let err = FrontmatterEdit::replace_sequence(source, "k", "[x]").unwrap_err();
+            assert_eq!(
+                err,
+                EditError::MultilineValue {
+                    key: "k".to_string()
+                }
+            );
+            assert_eq!(source, source);
+        }
+    }
+
+    #[test]
+    fn yaml_scalar_quotes_reserved_words_and_numbers() {
+        let words = [
+            "true", "True", "TRUE", "false", "False", "null", "Null", "NULL", "~", "yes", "Yes",
+            "no", "No", "on", "On", "off", "Off",
+        ];
+        let numbers = [
+            "123", "-42", "3.14", "1e3", "0x10", "0o10", ".inf", "-.inf", ".nan",
+        ];
+        for item in words.into_iter().chain(numbers) {
+            let yaml = yaml_scalar(item);
+            assert!(yaml.starts_with('"'), "{item} -> {yaml}");
+            let source = format!("---\nk: {yaml}\n---\n");
+            let parsed = frontmatter::parse_note(&source).expect("parse");
+            assert_eq!(parsed.values["k"].as_str(), Some(item), "{item}");
+        }
+        assert_eq!(yaml_scalar("ship"), "ship");
+        assert_eq!(yaml_scalar("a@b.c"), "\"a@b.c\"");
     }
 
     fn source_key(source: &str) -> &str {

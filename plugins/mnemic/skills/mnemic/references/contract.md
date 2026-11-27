@@ -59,6 +59,8 @@ Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noo
 
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, and `noop`. `path` is vault-relative. `noop` is true only when that `id` is already the note at that path. The file is not rewritten.
 
+Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noop`, and `changed`. `path` is vault-relative. `changed` lists the keys whose bytes changed, in argument order, without `updated`. `noop` is true when nothing changed. The file is not written and `updated` is not stamped.
+
 Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`, and `skipped`. `vault` is the target directory. `created` lists paths this call wrote. `skipped` lists paths left in place because they already existed.
 
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `from`, `to`, `alias_added`, and `rewritten`. `from` and `to` are vault-relative paths. `alias_added` is true when this call appended the old slug to `aliases`. `rewritten` lists notes whose incoming wikilinks were updated. `--no-rewrite` leaves those wikilinks unchanged, so `rewritten` is empty.
@@ -175,11 +177,23 @@ An entry that is not a regular file inside the vault is not a note, so it is not
 
 ## `mnemic new`
 
-`mnemic new <type> <title> [--id <ulid>] [--as <actor>] [--date <ISO-date>] [--path <path>] [--url <url>] --json` prints one JSON document.
+`mnemic new <type> <title> [--id <ulid>] [--as <actor>] [--date <ISO-date>] [--path <path>] [--url <url>] [--field <key=value>]... --json` prints one JSON document.
 
 Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, and `noop`. `path` is vault-relative. `noop` is true only when that `id` is already the note at that path. The file is not rewritten.
 
-`UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS`, `SLUG_COLLISION`, `MISSING_TEMPLATE`, `USAGE`, and `OUTSIDE_VAULT` are fatal for `new`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `BAD_ID` means `--id` is not a 26-character Crockford ULID. `ID_EXISTS` means that id is already a note at a different path. `SLUG_COLLISION` means the new filename slug equals another note's slug or alias after NFC case-folding. `MISSING_TEMPLATE` means the type has no body template. `USAGE` includes an empty slug, a missing author, `--path` or `--url` on a type other than `source`, and a `source` note with neither a non-empty `--path` nor a non-empty `--url`. The author message names both `--as` and `actor`. A `source` note writes each non-empty locator into frontmatter `path` and `url`.
+`--field` is `key=value`, split at the first `=`. It writes a declared field of the type, or `state`, `tags`, or `title`, after the core keys. A repeated `--field` builds a `strings` or `tags` list. A second `--field` for any other key is `USAGE`. `--path` together with `--field path=`, `--url` together with `--field url=`, and `--date` together with `--field date=` are `USAGE`. After the fields are applied, a missing `required = true` field is `USAGE` and no file is written.
+
+`UNKNOWN_TYPE`, `BAD_ID`, `ID_EXISTS`, `SLUG_COLLISION`, `MISSING_TEMPLATE`, `USAGE`, and `OUTSIDE_VAULT` are fatal for `new`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `BAD_ID` means `--id` is not a 26-character Crockford ULID. `ID_EXISTS` means that id is already a note at a different path. `SLUG_COLLISION` means the new filename slug equals another note's slug or alias after NFC case-folding. `MISSING_TEMPLATE` means the type has no body template. `USAGE` includes an empty slug, a missing author, a bad field, a missing required field, `--path` or `--url` on a type other than `source`, and a `source` note with neither a non-empty `--path` nor a non-empty `--url` (a `--field` locator counts). The author message names both `--as` and `actor`. A `source` note writes each non-empty locator into frontmatter `path` and `url`.
+
+## `mnemic set`
+
+`mnemic set <note> (--field <key=value>)... (--add <key=value>)... [--json] [--vault <path>]` prints one JSON document. `<note>` is a path, id, slug, or alias. At least one `--field` or `--add` is required.
+
+Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, `noop`, and `changed`. `path` is vault-relative. `changed` lists the keys whose bytes changed, in argument order, without `updated`. `noop` is true when nothing changed. The file is not written and `updated` is not stamped.
+
+`--field` writes a declared field, or `state`, `tags`, or `title`. `--add` appends one `strings` or `tags` item. A value already in the list is a no-op. `--field` and `--add` on the same key in one call is `USAGE`. `id`, `type`, `schema_version`, `created`, `created_by`, `updated`, `status`, `aliases`, `supersedes`, and any key the type does not declare are `USAGE`. The message names the key and the type. A note with no frontmatter, and a note under `sources/raw/`, are `USAGE`.
+
+`USAGE`, `NOT_FOUND`, `AMBIGUOUS`, `OUTSIDE_VAULT`, `UNKNOWN_TYPE`, and `VAULT_NOT_FOUND` are fatal for `set`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `AMBIGUOUS` lists `error.details.candidates`. `UNKNOWN_TYPE` means the note's type is not in the loaded pack. `IO` includes frontmatter that does not parse.
 
 ## `mnemic init`
 

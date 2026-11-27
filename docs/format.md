@@ -164,6 +164,20 @@ A new name adds a custom type. The same name replaces the built-in declaration w
 
 `FrontmatterEdit` in `mnemic-core` inserts a top-level key, replaces a top-level key's scalar, appends one list item with `append_sequence_item`, or prepends a block with `create_block`. Insert and replace match column-0 keys of the root mapping. A nested key of the same name is left alone. Replace refuses a value that spans lines (a `|` or `>` block scalar, an indented continuation, or a flow or block collection) with `MultilineValue` and does not rewrite that block. It copies every byte it was not asked to change, including comments, key order, quoting, and the body. A `#` inside a quoted scalar is part of the value. A trailing comment outside quotes stays. `create_block` writes `---\n<keys>\n---\n` in front of a file that has no frontmatter and leaves the rest of the file untouched. The value text is the caller's YAML scalar. The editor does not invent quotes. It does not write files. A later verb passes the bytes to `WriteTxn::atomic_write`. A brand-new file may be written as a fresh block without this editor.
 
+## Setting fields
+
+`mnemic set <note> --field key=value` writes one declared field through `FrontmatterEdit` inside the write lock. `new --field key=value` writes the same kind of field when the note is created, after the core keys. The key is a field the note's type declares, or `state`, `tags`, or `title`. `id`, `type`, `schema_version`, `created`, `created_by`, `updated`, `status`, `aliases`, `supersedes`, and any other key are `USAGE`. The message names the key and the type.
+
+A `string` or `title` is one non-empty single-line value. A second `--field` for that key is `USAGE`. A `strings` field or `tags` accepts repeated `--field` values, in order, collapsed after NFC case-folding, and is written as one flow sequence. `--add key=value` appends one list item. An item already present is left as-is. `--field` and `--add` for the same key in one call is `USAGE`.
+
+A `date` is `YYYY-MM-DD` or an RFC 3339 datetime with an offset, written unquoted. `state` must be one of the type's `[state] values`. Scalars go through `yaml_scalar`, which quotes YAML reserved words and numeric literals so they read back as strings. `new` still quotes `title`, `created_by`, `path`, and `url` the way it always has.
+
+`replace_sequence` replaces a single-line value or a pure block sequence (`- ` items) with that flow line and copies every other byte. A `|` or `>` block scalar, or a nested mapping, is `USAGE` and the file is left unchanged. `replace` still refuses a value that spans lines.
+
+`set` checks every field before it takes the lock, then reads the note again inside the lock. `changed` lists the keys whose bytes changed, in argument order, and does not include `updated`. When nothing changed, `set` does not write the file and does not stamp `updated`. `new` refuses a missing `required = true` field and writes no file. `--path` with `--field path=`, `--url` with `--field url=`, and `--date` with `--field date=` are `USAGE`.
+
+`set` does not unset a key, write `aliases` or `supersedes`, or resolve link targets. `check` remains the broken-link reporter.
+
 ## Search
 
 `mnemic search` scans the parsed note-file set from `VaultIndex`. It does not build an index, and it has no `MATCH` expression. The query is whitespace-separated tokens. Every token must match. Case folding is Unicode lowercase. Diacritics stay distinct. `-`, `"`, and `:` are characters in a token.
