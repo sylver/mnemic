@@ -8,7 +8,7 @@ description: >-
 license: MIT
 compatibility: Requires the mnemic CLI on PATH (macOS arm64 or Linux x86_64) and git.
 metadata:
-  mnemic-version: "0.1.1" # x-release-please-version
+  mnemic-version: "0.1.2" # x-release-please-version
 ---
 
 # mnemic

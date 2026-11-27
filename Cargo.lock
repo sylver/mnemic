@@ -481,7 +481,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mnemic"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "mnemic-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "deunicode",

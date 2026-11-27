@@ -11,7 +11,7 @@ description: >-
 license: MIT
 compatibility: Requires the mnemic CLI and git. The caller supplies a reader for each channel.
 metadata:
-  mnemic-version: "0.1.1" # x-release-please-version
+  mnemic-version: "0.1.2" # x-release-please-version
 ---
 
 # shadow
