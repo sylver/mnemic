@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use std::collections::BTreeMap;
@@ -68,18 +68,15 @@ fn mv(
     json: bool,
     vault: Option<PathBuf>,
 ) -> ExitCode {
-    let start = PathBuf::from(".");
-    let opened = mnemic_core::open_vault(&start, vault.as_deref());
-    let vault = match opened {
-        Ok(vault) => vault,
-        Err(err) => {
-            let (code, message) = fatal_from_vault(err);
+    let root = match opened_vault(vault.as_deref(), None) {
+        Ok(vault) => vault.root,
+        Err((code, message)) => {
             return emit(json, fatal_envelope(code, message), exit_code(code));
         }
     };
     let dest = dest.to_string_lossy();
     let result = move_note(MoveRequest {
-        vault: &vault.root,
+        vault: &root,
         note: &note,
         dest: &dest,
         rewrite: !no_rewrite,
@@ -161,10 +158,15 @@ fn new_note(
     json: bool,
     vault: Option<PathBuf>,
 ) -> ExitCode {
-    let start = vault.unwrap_or_else(|| PathBuf::from("."));
+    let root = match resolve_root(vault.as_deref(), None) {
+        Ok(root) => root,
+        Err((code, message)) => {
+            return emit(json, fatal_envelope(code, message), exit_code(code));
+        }
+    };
     let mut ids = UlidGenerator::from_seed(random_seed());
     let result = create_note(NewRequest {
-        vault: &start,
+        vault: &root,
         type_name: &type_name,
         title: &title,
         id: id.as_deref(),
@@ -218,17 +220,14 @@ fn random_seed() -> u64 {
 }
 
 fn log(note: String, text: String, json: bool, vault: Option<PathBuf>) -> ExitCode {
-    let start = PathBuf::from(".");
-    let opened = mnemic_core::open_vault(&start, vault.as_deref());
-    let vault = match opened {
-        Ok(vault) => vault,
-        Err(err) => {
-            let (code, message) = fatal_from_vault(err);
+    let root = match opened_vault(vault.as_deref(), None) {
+        Ok(vault) => vault.root,
+        Err((code, message)) => {
             return emit(json, fatal_envelope(code, message), exit_code(code));
         }
     };
     let result = log_note(LogRequest {
-        vault: &vault.root,
+        vault: &root,
         note: &note,
         text: &text,
         clock: &SystemClock,
@@ -313,16 +312,14 @@ fn search(
             );
         }
     };
-    let start = vault.clone().unwrap_or_else(|| PathBuf::from("."));
-    let vault = match mnemic_core::open_vault(&start, vault.as_deref()) {
-        Ok(vault) => vault,
-        Err(err) => {
-            let (code, message) = fatal_from_vault(err);
+    let root = match opened_vault(vault.as_deref(), None) {
+        Ok(vault) => vault.root,
+        Err((code, message)) => {
             return emit(json, fatal_envelope(code, message), exit_code(code));
         }
     };
     match search_vault(
-        &vault.root,
+        &root,
         SearchRequest {
             query: &query,
             type_name: type_name.as_deref(),
@@ -368,16 +365,13 @@ fn emit_search(json: bool, data: SearchData) -> ExitCode {
 }
 
 fn show(query: String, json: bool, vault: Option<PathBuf>, links_only: bool) -> ExitCode {
-    let start = vault.clone().unwrap_or_else(|| PathBuf::from("."));
-    let opened = mnemic_core::open_vault(&start, vault.as_deref());
-    let vault = match opened {
-        Ok(vault) => vault,
-        Err(err) => {
-            let (code, message) = fatal_from_vault(err);
+    let root = match opened_vault(vault.as_deref(), None) {
+        Ok(vault) => vault.root,
+        Err((code, message)) => {
             return emit(json, fatal_envelope(code, message), exit_code(code));
         }
     };
-    match read_note(&vault.root, &query) {
+    match read_note(&root, &query) {
         Ok(note) => emit_note(json, &note, links_only),
         Err(err) => {
             let (code, envelope) = fatal_from_read(err);
@@ -549,13 +543,29 @@ fn emit_init(json: bool, report: &mnemic_core::InitReport) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn resolve_root(
+    flag: Option<&Path>,
+    start: Option<&Path>,
+) -> Result<PathBuf, (EnvelopeCode, String)> {
+    let default = PathBuf::from(".");
+    let start = start.unwrap_or(default.as_path());
+    mnemic_core::open_config(start, flag)
+        .map(|(root, _config)| root)
+        .map_err(fatal_from_vault)
+}
+
+fn opened_vault(
+    flag: Option<&Path>,
+    start: Option<&Path>,
+) -> Result<mnemic_core::Vault, (EnvelopeCode, String)> {
+    let root = resolve_root(flag, start)?;
+    mnemic_core::load_vault(&root).map_err(fatal_from_vault)
+}
+
 fn check_fix_cmd(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>) -> ExitCode {
-    let start = path.clone().unwrap_or_else(|| PathBuf::from("."));
-    let opened = mnemic_core::open_vault(&start, vault.as_deref());
-    let vault = match opened {
+    let vault = match opened_vault(vault.as_deref(), path.as_deref()) {
         Ok(vault) => vault,
-        Err(err) => {
-            let (code, message) = fatal_from_vault(err);
+        Err((code, message)) => {
             return emit(json, fatal_envelope(code, message), exit_code(code));
         }
     };
@@ -608,12 +618,9 @@ fn check(path: Option<PathBuf>, json: bool, vault: Option<PathBuf>, fix: bool) -
     if fix {
         return check_fix_cmd(path, json, vault);
     }
-    let start = path.clone().unwrap_or_else(|| PathBuf::from("."));
-    let opened = mnemic_core::open_vault(&start, vault.as_deref());
-    let vault = match opened {
+    let vault = match opened_vault(vault.as_deref(), path.as_deref()) {
         Ok(vault) => vault,
-        Err(err) => {
-            let (code, message) = fatal_from_vault(err);
+        Err((code, message)) => {
             return emit(json, fatal_envelope(code, message), exit_code(code));
         }
     };
