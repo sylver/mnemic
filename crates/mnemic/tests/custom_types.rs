@@ -125,7 +125,7 @@ fn b4_changed_raw_byte_is_sha256_drift() {
     let dir = fixture_vault(true);
     let path = dir
         .path()
-        .join("sources/raw/shadows/ada-example/letter.txt");
+        .join("sources/raw/shadows/ada-example/x-adaexample/letter.txt");
     let mut bytes = fs::read(&path).expect("raw");
     bytes[0] ^= 0x01;
     fs::write(&path, bytes).expect("rewrite raw");
@@ -660,6 +660,133 @@ The letter says the engine is unfinished [[ada-example-letter]].
         let hits = timeline.matches(line).count();
         assert_eq!(hits, 1, "{shadow} timeline\n{timeline}");
     }
+}
+
+#[test]
+fn add_channel_on_ada_links_both_channels() {
+    let dir = fixture_vault(true);
+    let channel = run(
+        dir.path(),
+        &[
+            "new",
+            "channel",
+            "patreon:adaexample",
+            "--as",
+            "t",
+            "--field",
+            "shadow=shadow-ada-example",
+            "--field",
+            "locator=patreon:adaexample",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        channel.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&channel.stderr)
+    );
+
+    let raw_rel = "sources/raw/shadows/ada-example/patreon-adaexample/p1.txt";
+    let raw = dir.path().join(raw_rel);
+    fs::create_dir_all(raw.parent().expect("raw parent")).expect("raw dir");
+    fs::write(&raw, "a patreon post\n").expect("raw");
+    let digest = sha256_hex(&raw);
+
+    let source = run(
+        dir.path(),
+        &[
+            "new",
+            "source",
+            "patreon:adaexample 2026-11-26 p1",
+            "--as",
+            "t",
+            "--field",
+            &format!("path={raw_rel}"),
+            "--field",
+            &format!("sha256={digest}"),
+            "--field",
+            "tags=shadow/ada-example",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        source.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&source.stderr)
+    );
+
+    let logged = run(
+        dir.path(),
+        &[
+            "log",
+            "shadow-ada-example",
+            "2026-11-26 | [[patreon-adaexample]] | channel added",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        logged.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&logged.stderr)
+    );
+
+    let checked = json_at(dir.path(), &["check", "--json"], 0);
+    assert_eq!(checked["ok"], true);
+    assert!(error_codes(&checked).is_empty(), "{checked}");
+
+    let links = json_at(dir.path(), &["links", "shadow-ada-example", "--json"], 0);
+    let mut channels = Vec::new();
+    for edge in links["data"]["backlinks"].as_array().expect("backlinks") {
+        let id = edge["source"].as_str().expect("source");
+        let note = json_at(dir.path(), &["get", id, "--json"], 0);
+        if note["data"]["type"] == "channel" {
+            channels.push(note["data"]["slug"].as_str().expect("slug").to_string());
+        }
+    }
+    channels.sort();
+    assert_eq!(
+        channels,
+        vec!["patreon-adaexample".to_string(), "x-adaexample".to_string()]
+    );
+}
+
+#[test]
+fn blocked_channel_keeps_cursor() {
+    let dir = fixture_vault(true);
+    let stamped = json_at(
+        dir.path(),
+        &[
+            "set",
+            "x-adaexample",
+            "--field",
+            "cursor=2026-01-01",
+            "--json",
+        ],
+        0,
+    );
+    assert_eq!(stamped["ok"], true);
+    let blocked = json_at(
+        dir.path(),
+        &[
+            "set",
+            "x-adaexample",
+            "--field",
+            "state=blocked",
+            "--field",
+            "blocked=no access",
+            "--json",
+        ],
+        0,
+    );
+    assert_eq!(blocked["ok"], true);
+    let note = json_at(dir.path(), &["get", "x-adaexample", "--json"], 0);
+    let front = &note["data"]["frontmatter"];
+    assert_eq!(front["cursor"], "2026-01-01");
+    assert_eq!(front["state"], "blocked");
+    assert_eq!(front["blocked"], "no access");
 }
 
 #[test]

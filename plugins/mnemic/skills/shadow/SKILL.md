@@ -2,13 +2,14 @@
 name: shadow
 description: >-
   Build and use a shadow of one person in a mnemic vault. Install the shadow
-  and channel types, create the shadow from named channels, refresh it from
-  new items, consult it with citations, or answer in that person's voice. Ask
-  one question of two or more shadows in a council, and save that record only
-  when the user asks. Use when the user asks for a shadow, a persona, a
-  council, or to keep someone's published thinking current in the vault.
+  and channel types, create the shadow from named channels, add a channel to
+  an existing shadow, refresh it from new items, consult it with citations,
+  or answer in that person's voice. Ask one question of two or more shadows
+  in a council, and save that record only when the user asks. Use when the
+  user asks for a shadow, a persona, a council, adding a channel, or to keep
+  someone's published thinking current in the vault.
 license: MIT
-compatibility: Requires the mnemic CLI and git. YouTube needs a transcript tool. X needs a raw post reader.
+compatibility: Requires the mnemic CLI and git. The caller supplies a reader for each channel.
 metadata:
   mnemic-version: "0.1.1" # x-release-please-version
 ---
@@ -16,6 +17,8 @@ metadata:
 # shadow
 
 A shadow is one note that compiles how a person thinks, from what they publish. Channels are the places that publication comes from. Each stored item is a `source` note plus a raw text file. Claims cite those notes.
+
+This skill never fetches. It asks the caller for items that meet [references/ingest.md](references/ingest.md). When the caller cannot reach a channel, that channel is blocked and its cursor stays put.
 
 Follow the mnemic skill for the JSON envelope. Pass `--json` on every call. Pass `--as <actor>` on every `new`. Use one stable actor for the vault.
 
@@ -35,7 +38,7 @@ Exit 75 is `LOCK_HELD`. Retry the same command with backoff, about three attempt
 
 A channel locator is `kind:handle`.
 
-- `kind` matches `[a-z0-9-]+`. It is already lowercase. `x` and `yt` are the usual kinds. Other lowercase kinds are allowed.
+- `kind` matches `[a-z0-9-]+`. It is already lowercase. `kind` is an open set. Examples include `x`, `yt`, `patreon`, `rss`, and `podcast`.
 - `handle` is non-empty, contains no whitespace, and keeps the case the user gave.
 
 Refuse any other locator and ask again. Do not create a channel for it.
@@ -69,34 +72,53 @@ Ask for the person's name when you do not have it. Ask for every channel as `kin
 mnemic new shadow "Shadow: <Name>" --as <actor> --field person=<person-slug> --json
 ```
 
-3. Create one channel per locator. `<url>` is the public page for that handle when you know it.
+3. For each locator, run [Add channel](#add-channel). Those steps create the channel, backfill it, and fold it into the profile.
+4. `mnemic check --json` must exit 0. Commit once, after the last locator, with subject `mnemic(<actor>): shadow create <slug>`.
+
+## Add channel
+
+Attach one locator to a shadow that is already in the vault.
+
+1. `mnemic get shadow-<slug> --json` must succeed. When it does not, stop and offer create.
+2. Apply the locator rule.
+3. `mnemic get <channel-slug> --json`. When that note exists and its `shadow` field is this shadow, reuse it and go to [Refresh](#refresh). When `shadow` points at another shadow, stop and report that. Otherwise create the channel. Pass `--field url=<url>` when a URL is known, and omit it when none is known.
 
 ```bash
 mnemic new channel "<locator>" --as <actor> --field shadow=shadow-<slug> --field locator=<locator> --field url=<url> --json
 ```
 
-4. Backfill about 12 months, ending at the last completed day. Store each item with the ingest rules. Before each `new`, `mnemic get <item-slug> --json`. `ok: true` means the item is already stored: skip it. `NOT_FOUND` means write the raw file, then:
+`<channel-slug>` is that note's slug, taken from `data.path` of its `new` (or of the `get` when the note was already there).
+
+4. Backfill about 12 months for this channel only, ending at the last completed day. Store each item with the ingest rules. Before each `new`, `mnemic get <item-slug> --json`. `ok: true` means the item is already stored: skip it. `NOT_FOUND` means write the raw file, then:
 
 ```bash
 mnemic new source "<title>" --as <actor> --field url=<url> --field path=<path> --field sha256=<sha256> --field tags=shadow/<slug> --field tags=domain/<domain> --json
 ```
 
-`<path>` is vault-relative, under `sources/raw/shadows/<slug>/`. `<sha256>` is the hex digest of that file. Repeat `--field tags` once per tag. Use `domain/<domain>` only when the item belongs to a domain the shadow tracks.
+`<path>` is vault-relative, under `sources/raw/shadows/<slug>/<channel-slug>/`. `<sha256>` is the hex digest of that file. Repeat `--field tags` once per tag. Use `domain/<domain>` only when the item belongs to a domain the shadow tracks.
 
-5. Advance each channel only across items that are stored. `<now>` is the local date `YYYY-MM-DD`, which `last_run_at` accepts.
+5. Set `cursor` and `state` the same way refresh does after a finished read. `<now>` is the local date `YYYY-MM-DD`, which `last_run_at` accepts.
 
 ```bash
-mnemic set <channel> --field cursor=<id> --field last_run_at=<now> --json
+mnemic set <channel> --field state=ready --field cursor=<id> --field last_run_at=<now> --json
 ```
 
-6. Write the profile from the stored items, using [references/profile.md](references/profile.md). Edit the shadow body only. Do not hand-edit frontmatter and do not rewrite timeline lines.
+6. Fold the new items into the shadow profile, using [references/profile.md](references/profile.md). Edit the shadow body only. Do not hand-edit frontmatter and do not rewrite timeline lines.
 7. Set each source you folded to `read`:
 
 ```bash
 mnemic set <source> --field state=read --json
 ```
 
-8. `mnemic check --json` must exit 0 before the commit.
+8. Append one timeline line on the shadow. The summary has no `|`.
+
+```bash
+mnemic log shadow-<slug> "YYYY-MM-DD | [[<channel-slug>]] | channel added" --json
+```
+
+9. `mnemic check --json` must exit 0. Commit with subject `mnemic(<actor>): shadow add-channel <slug>`. A create run skips this commit and uses the create subject instead.
+
+Exit 75 retries as in the retry rule.
 
 ## Refresh
 
@@ -104,16 +126,16 @@ Find channels with `mnemic links <shadow> --json` and keep backlinks whose type 
 
 For each channel:
 
-1. Read `cursor`, `state`, and `blocked`. Fetch items newer than `cursor`, using [references/ingest.md](references/ingest.md). Store them the same way as create, including `get` before `new`.
-2. When the read tool is missing, do not move `cursor`.
+1. Read `cursor`, `state`, and `blocked`. Ask the caller for items newer than `cursor`, using [references/ingest.md](references/ingest.md). Store them the same way as add channel, including `get` before `new`.
+2. When the caller cannot reach the channel, do not move `cursor`.
 
 ```bash
-mnemic set <channel> --field state=blocked --field blocked=<tool> --json
+mnemic set <channel> --field state=blocked --field blocked=<reason> --json
 ```
 
-`<tool>` is the missing program, such as the transcript tool or the raw post reader.
+`blocked=<reason>` names what is missing: a tool, auth, access, or a paywall. Blocking never moves `cursor`.
 
-3. When the fetch finishes, set `ready` and move `cursor`. Do not pass `blocked` on this call. An empty value is `USAGE`, so a tool name from an earlier block can remain. `state=ready` is what the next refresh trusts.
+3. When the read finishes, set `ready` and move `cursor`. Do not pass `blocked` on this call. An empty value is `USAGE`, so a reason from an earlier block can remain. `state=ready` is what the next refresh trusts.
 
 ```bash
 mnemic set <channel> --field state=ready --field cursor=<id> --field last_run_at=<now> --json

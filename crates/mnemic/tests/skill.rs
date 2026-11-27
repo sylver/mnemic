@@ -412,6 +412,66 @@ fn invented_flag_in_a_code_span_is_rejected() {
     );
 }
 
+fn shadow_skill_text() -> String {
+    let path = repo_root().join("plugins/mnemic/skills/shadow/SKILL.md");
+    read_skill(&path)
+}
+
+fn ingest_text() -> String {
+    let path = repo_root().join("plugins/mnemic/skills/shadow/references/ingest.md");
+    std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("ingest.md: {err}"))
+}
+
+/// Each `sources/raw/shadows/` path in the shadow skill must name the channel folder.
+fn raw_shadow_paths(text: &str) -> Vec<String> {
+    let needle = "sources/raw/shadows/";
+    let mut paths = Vec::new();
+    let mut rest = text;
+    while let Some(index) = rest.find(needle) {
+        let start = index;
+        let after = &rest[start + needle.len()..];
+        let end = after
+            .find(|ch: char| ch.is_whitespace() || matches!(ch, '`' | ')' | ',' | '.'))
+            .unwrap_or(after.len());
+        paths.push(format!("{needle}{}", &after[..end]));
+        rest = &after[end..];
+    }
+    paths
+}
+
+#[test]
+fn shadow_compatibility_and_ingest_name_no_platform_reader() {
+    let (front, _) = split_skill(&shadow_skill_text());
+    let compatibility = frontmatter_value(&front, "compatibility");
+    for banned in ["YouTube", "transcript", "post reader"] {
+        assert!(
+            !compatibility.contains(banned),
+            "compatibility contains {banned}: {compatibility}"
+        );
+    }
+    let ingest = ingest_text();
+    for heading in ["## YouTube\n", "## X\n"] {
+        assert!(!ingest.contains(heading), "ingest.md has {heading}");
+    }
+}
+
+#[test]
+fn shadow_add_channel_paths_include_channel_slug() {
+    let skill = shadow_skill_text();
+    assert!(
+        skill.contains("## Add channel\n"),
+        "SKILL.md missing ## Add channel"
+    );
+    let prefix = "sources/raw/shadows/<slug>/<channel-slug>/";
+    for text in [skill.as_str(), ingest_text().as_str()] {
+        let paths = raw_shadow_paths(text);
+        assert!(!paths.is_empty(), "expected raw shadow paths");
+        for path in paths {
+            assert!(path.starts_with(prefix), "{path} must start with {prefix}");
+        }
+    }
+}
+
 #[test]
 fn every_skill_code_span_names_real_flags() {
     for path in skill_paths() {
