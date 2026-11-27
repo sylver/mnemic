@@ -116,6 +116,8 @@ Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `path`, and 
 
 Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`, and `skipped`. `vault` is the target directory. `created` lists paths this call wrote. `skipped` lists paths left in place because they already existed.
 
+`init` writes `README.md` only when no entry exists at that path. An existing entry is left unchanged and listed in `skipped`. `init` does not write `AGENTS.md`.
+
 `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal for `init`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `NESTED_VAULT` means a parent of the target already has `mnemic.toml`.
 
 ## `mnemic mv`

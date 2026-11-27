@@ -14,7 +14,7 @@ const GITIGNORE_LINE: &[u8] = b".mnemic/";
 pub struct InitRequest<'a> {
     pub target: &'a Path,
     pub actor: Option<&'a str>,
-    pub agents_template: &'a str,
+    pub readme_template: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,7 +76,7 @@ pub fn init_vault(request: InitRequest<'_>) -> Result<InitReport, InitError> {
     }
     classify_config(&target.join("mnemic.toml"))?;
 
-    let template = request.agents_template.to_string();
+    let template = request.readme_template.to_string();
     let toml_body = toml_bytes(request.actor)?;
     let folders = type_folders()?;
     // Refuse a symlink append before the lock, which creates `.mnemic/`.
@@ -100,9 +100,9 @@ pub fn init_vault(request: InitRequest<'_>) -> Result<InitReport, InitError> {
         }
         write_if_absent(
             txn,
-            &target.join("AGENTS.md"),
+            &target.join("README.md"),
             template.as_bytes(),
-            "AGENTS.md",
+            "README.md",
             &mut created,
             &mut skipped,
         )?;
