@@ -15,6 +15,7 @@
 | [0011](0011-check-fix.md) | check --fix inserts only derived id and type | Accepted |
 | [0012](0012-move-rename.md) | Move renames without replacing, then rewrites links | Accepted |
 | [0013](0013-vault-readme-not-agents.md) | Vault root gets a static README, not AGENTS.md | Accepted |
+| [0014](0014-default-vault-user-config.md) | Default vault lives in user config, below the directory walk | Accepted |
 
 ## Rules
 

@@ -170,6 +170,34 @@ const CLOSED: &[(&str, &str, &str, u32)] = &[
         "read_to_string",
         1,
     ),
+    // user config, not a vault path
+    (
+        "crates/mnemic/src/main.rs",
+        "canonical_root",
+        "canonicalize",
+        1,
+    ),
+    // user config, not a vault path
+    (
+        "crates/mnemic/src/main.rs",
+        "searched_from",
+        "canonicalize",
+        1,
+    ),
+    // user config, not a vault path
+    (
+        "crates/mnemic/src/user_config.rs",
+        "existing_text",
+        "read_to_string",
+        1,
+    ),
+    // user config, not a vault path
+    (
+        "crates/mnemic/src/user_config.rs",
+        "read",
+        "read_to_string",
+        1,
+    ),
 ];
 
 #[test]

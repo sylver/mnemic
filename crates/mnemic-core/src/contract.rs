@@ -359,6 +359,8 @@ fn render_markdown() -> String {
          Fatal codes use `ok: false`, `data: null`, and `error.code` set to the fatal code. \
          `VAULT_NOT_FOUND`, `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and \
          `NESTED_VAULT` are fatal. They are never entries in `data.errors`. \
+         `VAULT_NOT_FOUND` `error.details` includes `searched_from`, the absolute path the walk started from. \
+         When a bound default vault was tried and has no `mnemic.toml`, `details` also includes `default` and `config`. \
          `init` returns `NESTED_VAULT` when a parent of the target already has `mnemic.toml`. \
          `get` and `links` return `NOT_FOUND` when the resolver misses, `AMBIGUOUS` when a slug \
          or alias matches more than one note (`error.details.candidates` lists `id` and `path`), \
@@ -463,7 +465,11 @@ fn render_markdown() -> String {
          ## `mnemic mv`\n\n\
          `mnemic mv <note> <dest> [--no-rewrite] [--vault <dir>] --json` prints one JSON document. `<note>` is a path, id, slug, or alias. `<dest>` is a vault-relative file or directory.\n\n\
          Success is `ok: true`, `error: null`, exit 0, and `data` with `id`, `from`, `to`, `alias_added`, and `rewritten`. `from` and `to` are vault-relative paths. `alias_added` is true when this call appended the old slug to `aliases`. `rewritten` lists notes whose incoming wikilinks were updated. `--no-rewrite` leaves those wikilinks unchanged, so `rewritten` is empty.\n\n\
-         `USAGE`, `NOT_FOUND`, `AMBIGUOUS`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE` are fatal for `mv`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `DEST_EXISTS` means the destination file is already present. `NOTE_ARCHIVED` means the note status is archived. `ALIAS_NOT_UNIQUE` means the old slug is already an alias of another note. `SLUG_COLLISION` means the destination slug equals another note's slug or alias. `RAW_IMMUTABLE` means the destination is under `sources/raw`. `AMBIGUOUS` lists `error.details.candidates` with `path`.\n",
+         `USAGE`, `NOT_FOUND`, `AMBIGUOUS`, `OUTSIDE_VAULT`, `DEST_EXISTS`, `NOTE_ARCHIVED`, `ALIAS_NOT_UNIQUE`, `SLUG_COLLISION`, and `RAW_IMMUTABLE` are fatal for `mv`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `DEST_EXISTS` means the destination file is already present. `NOTE_ARCHIVED` means the note status is archived. `ALIAS_NOT_UNIQUE` means the old slug is already an alias of another note. `SLUG_COLLISION` means the destination slug equals another note's slug or alias. \
+         `RAW_IMMUTABLE` means the destination is under `sources/raw`. `AMBIGUOUS` lists `error.details.candidates` with `path`.\n\n\
+         ## `mnemic use`\n\n\
+         `mnemic use [<path>] [--clear] --json` prints one JSON document. With no argument it writes nothing and reports the vault this directory resolves to. `<path>` binds that vault's canonical root as the default. `--clear` removes the binding.\n\n\
+         Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `source`, `default`, `config`, and `changed`. `vault` is the resolved root or null. `source` is `cwd`, `default`, or null. `default` is the bound path or null. `config` is the user config path or null. `changed` is true only when this call wrote the file. The show form exits 0 when nothing resolves. It fails only on `BAD_CONFIG` in the user config.\n",
     );
     out
 }

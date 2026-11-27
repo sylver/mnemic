@@ -68,9 +68,10 @@ Exit 0 means that fixture vault passes.
 
 ```bash
 mnemic init --as <name> --vault /path/to/vault
+mnemic init --as alice && mnemic use .
 ```
 
-`--as` writes `actor` into `mnemic.toml` when that file is created. `mnemic new` needs an author. If you omit `--as` and `mnemic.toml` has no `actor`, a later `new` exits with a usage error. You can set `actor` in `mnemic.toml` instead of passing `--as`.
+`--as` writes `actor` into `mnemic.toml` when that file is created. `mnemic use .` binds that vault as the default for later commands run outside a vault. `mnemic new` needs an author. If you omit `--as` and `mnemic.toml` has no `actor`, a later `new` exits with a usage error. You can set `actor` in `mnemic.toml` instead of passing `--as`.
 
 `init` also writes a short `README.md`, a `.gitignore` line for `.mnemic/`, and one `.gitkeep` in each empty type folder from the core pack. `.mnemic/` is local tool state. `mnemic.toml` is the vault config. Pass `--vault` as the directory to create. Without `--vault`, `init` uses the current directory and does not walk to a parent vault.
 
@@ -86,6 +87,7 @@ These are the v1 commands.
 - `links` lists outgoing links, backlinks, and broken links for one note.
 - `new` creates a note from a type template.
 - `mv` moves or renames a note and rewrites incoming wikilinks.
+- `use` shows, sets, or clears the default vault. `mnemic use <path>` binds the vault at or above that path. `mnemic use --clear` removes the binding.
 
 There is no `index` command, no `migrate` command, and no `mcp` command.
 

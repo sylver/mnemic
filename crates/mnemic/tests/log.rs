@@ -1,3 +1,5 @@
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -30,7 +32,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 fn run(vault: &Path, args: &[&str]) -> std::process::Output {
-    let mut command = assert_cmd::Command::cargo_bin("mnemic").expect("bin");
+    let mut command = common::mnemic();
     command.current_dir(vault);
     command.args(args).output().expect("run")
 }
@@ -265,6 +267,8 @@ fn twenty_processes_do_not_drop_an_ok_line() {
         let text = format!("2026-01-{index:02} | p{index} | line {index}");
         let child = Command::new(&bin)
             .current_dir(&vault)
+            .env("XDG_CONFIG_HOME", common::config_home())
+            .env_remove("HOME")
             .args(["log", "ada", &text, "--json"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -372,7 +376,7 @@ fn a_directory_symlink_outside_the_vault_is_not_indexed() {
         .unwrap()
         .contains("- 2026-10-01 | old | older"));
 
-    let mut check = assert_cmd::Command::cargo_bin("mnemic").expect("bin");
+    let mut check = common::mnemic();
     check.current_dir(&vault);
     let check = check.args(["check", "--json"]).output().expect("check");
     let stdout = String::from_utf8(check.stdout).unwrap();
@@ -434,7 +438,7 @@ fn log_on_a_symlink_to_an_outside_fifo_is_outside_vault() {
     let fifo = outside.path().join("trap");
     mkfifo(&fifo);
     std::os::unix::fs::symlink(&fifo, vault.join("people/pipe.md")).unwrap();
-    let mut command = assert_cmd::Command::cargo_bin("mnemic").expect("bin");
+    let mut command = common::mnemic();
     let output = command
         .current_dir(&vault)
         .args([
@@ -473,6 +477,8 @@ fn assert_scan_finishes(vault: &Path) {
 
     let child = Command::new(cargo_bin("mnemic"))
         .current_dir(vault)
+        .env("XDG_CONFIG_HOME", common::config_home())
+        .env_remove("HOME")
         .args(["check", "--json"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -1,0 +1,17 @@
+---
+source: crates/mnemic/tests/use_vault.rs
+expression: redacted
+---
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "VAULT_NOT_FOUND",
+    "message": "default vault <vault-a> has no mnemic.toml (set in <config>). Run 'mnemic use <path>' or 'mnemic use --clear'.",
+    "details": {
+      "config": "<config>",
+      "default": "<vault-a>",
+      "searched_from": "<cwd>"
+    }
+  }
+}

@@ -7,7 +7,9 @@ expression: stdout
   "data": null,
   "error": {
     "code": "VAULT_NOT_FOUND",
-    "message": "no mnemic.toml found",
-    "details": {}
+    "message": "no mnemic.toml in <cwd> or its parents, and no default vault. Run 'mnemic init' to create one or 'mnemic use <path>' to set a default.",
+    "details": {
+      "searched_from": "<cwd>"
+    }
   }
 }

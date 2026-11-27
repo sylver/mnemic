@@ -489,6 +489,7 @@ dependencies = [
  "mnemic-core",
  "serde_json",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

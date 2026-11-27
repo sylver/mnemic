@@ -1,9 +1,10 @@
-use assert_cmd::Command;
+mod common;
+
 use std::process::Output;
 
 fn output(args: &[&str]) -> Output {
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut command = Command::cargo_bin("mnemic").expect("mnemic binary");
+    let mut command = common::mnemic();
     command.current_dir(dir.path());
     command.args(args).output().expect("run mnemic")
 }
