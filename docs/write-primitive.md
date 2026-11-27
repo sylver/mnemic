@@ -10,7 +10,7 @@ The lock file is `<vault>/.mnemic/write.lock`. The primitive creates `.mnemic/` 
 
 The lock is `flock(LOCK_EX)` via `rustix`. The kernel releases it when the holder exits or crashes, including `kill -9`. The file contents are a pid and a unix timestamp, written only so `Error::LockHeld { pid, since }` can name the holder. They are not the lock.
 
-The wait polls with backoff until `--lock-timeout`. The library default is `DEFAULT_LOCK_TIMEOUT` (5 seconds). When the wait expires the primitive returns `Error::LockHeld`. Later verbs map that variant to the shared envelope code `LOCK_HELD`, exit 75. Other failures are `Error::Io`.
+The wait polls with backoff for up to `DEFAULT_LOCK_TIMEOUT` (5 seconds). There is no CLI flag to change it. When the wait expires the primitive returns `Error::LockHeld`. Later verbs map that variant to the shared envelope code `LOCK_HELD`, exit 75. Other failures are `Error::Io`.
 
 One lock covers the whole operation. Multi-file work (`mv`, vault-wide `--fix`) calls `with_write_lock` once and resolves every path inside that closure.
 
