@@ -374,6 +374,7 @@ fn render_markdown() -> String {
          ## `mnemic init`\n\n\
          `mnemic init [--as <actor>] [--vault <dir>] --json` prints one JSON document. The target is `--vault`, or the current directory. `init` does not walk to a parent vault.\n\n\
          Success is `ok: true`, `error: null`, exit 0, and `data` with `vault`, `created`, and `skipped`. `vault` is the target directory. `created` lists paths this call wrote. `skipped` lists paths left in place because they already existed.\n\n\
+         `init` writes `README.md` only when no entry exists at that path. An existing entry is left unchanged and listed in `skipped`. `init` does not write `AGENTS.md`.\n\n\
          `USAGE`, `BAD_CONFIG`, `UNSUPPORTED_VAULT_VERSION`, and `NESTED_VAULT` are fatal for `init`. Exit 2. `LOCK_HELD` is exit 75. `IO` is exit 1. `NESTED_VAULT` means a parent of the target already has `mnemic.toml`.\n\n\
          ## `mnemic mv`\n\n\
          `mnemic mv <note> <dest> [--no-rewrite] [--vault <dir>] --json` prints one JSON document. `<note>` is a path, id, slug, or alias. `<dest>` is a vault-relative file or directory.\n\n\

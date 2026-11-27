@@ -36,6 +36,31 @@ fn json_value(output: &Output) -> Value {
     serde_json::from_slice(&output.stdout).expect("json stdout")
 }
 
+fn assert_static_readme(text: &str) {
+    assert!(
+        text.lines().count() <= 15,
+        "line count {}",
+        text.lines().count()
+    );
+    assert!(text.contains("mnemic skill"));
+    assert!(text.contains("mnemic --help"));
+    assert!(text.contains("https://github.com/sylver/mnemic"));
+    assert!(!text.to_ascii_lowercase().contains("visibility"));
+    assert!(!text.contains("brain.toml"));
+    assert!(!text.contains(".brain/"));
+    assert!(
+        !text.chars().any(|ch| ch.is_ascii_digit()),
+        "version number in {text}"
+    );
+    assert!(
+        !text.lines().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with(|ch: char| ch.is_ascii_digit())
+        }),
+        "verb list in {text}"
+    );
+}
+
 fn names(value: &Value, field: &str) -> Vec<String> {
     value["data"][field]
         .as_array()
@@ -61,7 +86,7 @@ fn empty_dir_scaffolds_vault_without_copying_templates_or_git() {
     let created = names(&body, "created");
     for required in [
         "mnemic.toml",
-        "AGENTS.md",
+        "README.md",
         ".gitignore",
         "inbox/.gitkeep",
         "people/.gitkeep",
@@ -69,18 +94,9 @@ fn empty_dir_scaffolds_vault_without_copying_templates_or_git() {
         assert!(created.iter().any(|path| path == required), "{created:?}");
     }
     assert!(names(&body, "skipped").is_empty());
-    let agents = fs::read_to_string(dir.path().join("AGENTS.md")).expect("agents");
-    assert!(agents.contains("mnemic new <type>"));
-    assert!(agents.contains("Search the vault before creating a page"));
-    assert!(agents.contains("One file per entity"));
-    assert!(agents.contains("Append to the timeline"));
-    assert!(agents.contains("sources/raw/"));
-    assert!(agents.contains("Prefer the `mnemic` CLI with `--json`"));
-    assert!(agents.contains("does not commit or push"));
-    assert!(agents.contains("written immediately, not batched"));
-    assert!(!agents.to_ascii_lowercase().contains("visibility"));
-    assert!(!agents.contains("brain.toml"));
-    assert!(!agents.contains(".brain/"));
+    let readme = fs::read_to_string(dir.path().join("README.md")).expect("readme");
+    assert_static_readme(&readme);
+    assert!(!dir.path().join("AGENTS.md").exists());
     let ignore = fs::read_to_string(dir.path().join(".gitignore")).expect("gitignore");
     assert!(ignore.contains(".mnemic/\n") || ignore.lines().any(|line| line.trim() == ".mnemic/"));
     let toml = fs::read_to_string(dir.path().join("mnemic.toml")).expect("toml");
@@ -114,7 +130,7 @@ fn nonempty_dir_keeps_notes_and_appends_gitignore() {
     assert!(ignore.starts_with("*.tmp\n"));
     assert!(ignore.lines().any(|line| line.trim() == ".mnemic/"));
     assert!(dir.path().join("mnemic.toml").is_file());
-    assert!(dir.path().join("AGENTS.md").is_file());
+    assert!(dir.path().join("README.md").is_file());
 }
 
 #[test]
@@ -137,7 +153,7 @@ fn nested_unsupported_and_bad_config_write_nothing() {
         fs::read(nested.path().join("mnemic.toml")).expect("parent"),
         before
     );
-    assert!(!child.join("AGENTS.md").exists());
+    assert!(!child.join("README.md").exists());
     assert!(!child.join(".gitignore").exists());
 
     let bad = temp_from_fixture("init-bad-config");
@@ -149,7 +165,7 @@ fn nested_unsupported_and_bad_config_write_nothing() {
         fs::read(bad.path().join("mnemic.toml")).expect("bad"),
         bad_before
     );
-    assert!(!bad.path().join("AGENTS.md").exists());
+    assert!(!bad.path().join("README.md").exists());
 
     let newer = tempfile::tempdir().expect("temp");
     fs::write(
@@ -168,11 +184,31 @@ fn nested_unsupported_and_bad_config_write_nothing() {
         fs::read(newer.path().join("mnemic.toml")).expect("newer"),
         newer_before
     );
-    assert!(!newer.path().join("AGENTS.md").exists());
+    assert!(!newer.path().join("README.md").exists());
 }
 
 #[test]
-fn existing_agents_file_is_skipped_and_left_unchanged() {
+fn existing_readme_file_is_skipped_and_left_unchanged() {
+    let dir = tempfile::tempdir().expect("temp");
+    let original = b"local readme\n";
+    fs::write(dir.path().join("README.md"), original).expect("write");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read(dir.path().join("README.md")).expect("readme"),
+        original
+    );
+    let skipped = names(&json_value(&output), "skipped");
+    assert!(skipped.iter().any(|path| path == "README.md"));
+}
+
+#[test]
+fn existing_agents_file_is_left_alone_and_not_reported() {
     let dir = tempfile::tempdir().expect("temp");
     let original = b"local agents\n";
     fs::write(dir.path().join("AGENTS.md"), original).expect("write");
@@ -187,8 +223,17 @@ fn existing_agents_file_is_skipped_and_left_unchanged() {
         fs::read(dir.path().join("AGENTS.md")).expect("agents"),
         original
     );
-    let skipped = names(&json_value(&output), "skipped");
-    assert!(skipped.iter().any(|path| path == "AGENTS.md"));
+    let body = json_value(&output);
+    let created = names(&body, "created");
+    let skipped = names(&body, "skipped");
+    assert!(
+        !created.iter().any(|path| path == "AGENTS.md"),
+        "{created:?}"
+    );
+    assert!(
+        !skipped.iter().any(|path| path == "AGENTS.md"),
+        "{skipped:?}"
+    );
 }
 
 #[test]
@@ -221,14 +266,76 @@ fn second_init_does_not_rewrite_toml_or_gitignore() {
     assert!(names(&body, "created").is_empty(), "{body}");
 }
 
+#[test]
+fn second_init_keeps_readme_and_skips_it() {
+    let dir = tempfile::tempdir().expect("temp");
+    let first = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        first.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let readme_path = dir.path().join("README.md");
+    let original = fs::read(&readme_path).expect("readme");
+    let edited = b"# kept\n";
+    fs::write(&readme_path, edited).expect("edit readme");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read(&readme_path).expect("readme"), edited);
+    assert_ne!(edited.as_slice(), original.as_slice());
+    let body = json_value(&output);
+    assert!(
+        names(&body, "skipped")
+            .iter()
+            .any(|path| path == "README.md"),
+        "{body}"
+    );
+    assert!(!names(&body, "created")
+        .iter()
+        .any(|path| path == "README.md"));
+}
+
 #[cfg(unix)]
 #[test]
-fn dangling_agents_symlink_is_skipped_and_unchanged() {
+fn fifo_readme_is_skipped_and_not_opened() {
+    use std::os::unix::fs::FileTypeExt;
+
+    let dir = tempfile::tempdir().expect("temp");
+    let fifo = dir.path().join("README.md");
+    let status = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("mkfifo");
+    assert!(status.success(), "mkfifo");
+    let output = run(dir.path(), &["init", "--json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(fifo.symlink_metadata().expect("meta").file_type().is_fifo());
+    let skipped = names(&json_value(&output), "skipped");
+    assert!(
+        skipped.iter().any(|path| path == "README.md"),
+        "{skipped:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dangling_readme_symlink_is_skipped_and_unchanged() {
     use std::os::unix::fs::symlink;
 
     let dir = tempfile::tempdir().expect("temp");
-    let link = dir.path().join("AGENTS.md");
-    symlink("missing-agents.md", &link).expect("symlink");
+    let link = dir.path().join("README.md");
+    symlink("missing-readme.md", &link).expect("symlink");
     let output = run(dir.path(), &["init", "--json"]);
     assert_eq!(
         output.status.code(),
@@ -243,12 +350,12 @@ fn dangling_agents_symlink_is_skipped_and_unchanged() {
         .is_symlink());
     assert_eq!(
         fs::read_link(&link).expect("link"),
-        PathBuf::from("missing-agents.md")
+        PathBuf::from("missing-readme.md")
     );
-    assert!(!dir.path().join("missing-agents.md").exists());
+    assert!(!dir.path().join("missing-readme.md").exists());
     let skipped = names(&json_value(&output), "skipped");
     assert!(
-        skipped.iter().any(|path| path == "AGENTS.md"),
+        skipped.iter().any(|path| path == "README.md"),
         "{skipped:?}"
     );
 }
@@ -279,7 +386,7 @@ fn symlinked_gitignore_needing_append_writes_nothing() {
     assert!(message.contains("symlink"), "{message}");
     assert!(message.contains(".gitignore"), "{message}");
     assert!(!dir.path().join("mnemic.toml").exists());
-    assert!(!dir.path().join("AGENTS.md").exists());
+    assert!(!dir.path().join("README.md").exists());
     assert_eq!(fs::read(&target).expect("target"), original);
     assert!(link
         .symlink_metadata()
@@ -294,15 +401,15 @@ fn symlinked_gitignore_needing_append_writes_nothing() {
 
 #[cfg(unix)]
 #[test]
-fn live_agents_symlink_is_skipped_and_target_unchanged() {
+fn live_readme_symlink_is_skipped_and_target_unchanged() {
     use std::os::unix::fs::symlink;
 
     let dir = tempfile::tempdir().expect("temp");
-    let target = dir.path().join("agents-target");
-    let original = b"kept agents\n";
-    fs::write(&target, original).expect("agents target");
-    let link = dir.path().join("AGENTS.md");
-    symlink("agents-target", &link).expect("symlink");
+    let target = dir.path().join("readme-target");
+    let original = b"kept readme\n";
+    fs::write(&target, original).expect("readme target");
+    let link = dir.path().join("README.md");
+    symlink("readme-target", &link).expect("symlink");
     let output = run(dir.path(), &["init", "--json"]);
     assert_eq!(
         output.status.code(),
@@ -318,11 +425,11 @@ fn live_agents_symlink_is_skipped_and_target_unchanged() {
         .is_symlink());
     assert_eq!(
         fs::read_link(&link).expect("link"),
-        PathBuf::from("agents-target")
+        PathBuf::from("readme-target")
     );
     let skipped = names(&json_value(&output), "skipped");
     assert!(
-        skipped.iter().any(|path| path == "AGENTS.md"),
+        skipped.iter().any(|path| path == "README.md"),
         "{skipped:?}"
     );
 }
@@ -412,7 +519,7 @@ fn dangling_mnemic_toml_writes_nothing() {
     assert!(body["data"].is_null());
     assert_eq!(body["error"]["code"], "IO");
     assert!(!dir.path().join(".mnemic").exists());
-    assert!(!dir.path().join("AGENTS.md").exists());
+    assert!(!dir.path().join("README.md").exists());
     assert!(!dir.path().join(".gitignore").exists());
     assert!(link
         .symlink_metadata()

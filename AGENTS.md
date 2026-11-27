@@ -33,7 +33,7 @@ Put shared test inputs in `fixtures/`. `fixtures/.gitkeep` keeps the directory i
 
 ## Vault template
 
-`crates/mnemic/templates/AGENTS.md` is the vault template `mnemic init` writes. This file is the repo guide. They are different files. If a vault-root `AGENTS.md` already exists, `init` skips it, lists `AGENTS.md` in `data.skipped`, and exits 0.
+`crates/mnemic/templates/README.md` is the vault template `mnemic init` writes. This file is the repo guide. They are different files. `init` writes that README only when no entry exists at the vault root, skips any existing entry, lists `README.md` in `data.skipped`, and exits 0. Vaults get no `AGENTS.md`.
 
 ## Type templates and overlays
 
