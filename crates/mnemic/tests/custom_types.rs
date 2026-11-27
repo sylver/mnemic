@@ -312,6 +312,33 @@ fn sha256_hex(path: &Path) -> String {
         .to_string()
 }
 
+fn frontmatter_tags(text: &str) -> Vec<String> {
+    let Some(rest) = text.strip_prefix("---\n") else {
+        return Vec::new();
+    };
+    let Some((front, _)) = rest.split_once("\n---\n") else {
+        return Vec::new();
+    };
+    for line in front.lines() {
+        let Some(value) = line.trim().strip_prefix("tags:") else {
+            continue;
+        };
+        let value = value.trim();
+        let Some(inner) = value
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+        else {
+            continue;
+        };
+        return inner
+            .split(',')
+            .map(|item| item.trim().trim_matches('"').to_string())
+            .filter(|item| !item.is_empty())
+            .collect();
+    }
+    Vec::new()
+}
+
 fn data_hits(body: &Value) -> Vec<Value> {
     body["data"]["hits"].as_array().expect("hits").clone()
 }
@@ -349,22 +376,20 @@ fn domain_members(dir: &Path, domain: &str) -> Vec<String> {
             slugs.insert(query.to_string());
         }
     }
-    let sources = json_at(
-        dir,
-        &[
-            "search", "source", "--type", "source", "--tag", &tag, "--limit", "10000", "--json",
-        ],
-        0,
-    );
-    for hit in data_hits(&sources) {
-        let query = hit["path"].as_str().expect("path");
-        let note = json_at(dir, &["get", query, "--json"], 0);
-        let tags = note["data"]["frontmatter"]["tags"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
-        for tag in tags {
-            let Some(slug) = tag.as_str().and_then(|tag| tag.strip_prefix("shadow/")) else {
+    let sources_dir = dir.join("sources");
+    for entry in fs::read_dir(&sources_dir).expect("sources") {
+        let entry = entry.expect("source entry");
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+        let text = fs::read_to_string(&path).expect("source note");
+        let tags = frontmatter_tags(&text);
+        if !tags.iter().any(|item| item == &tag) {
+            continue;
+        }
+        for item in tags {
+            let Some(slug) = item.strip_prefix("shadow/") else {
                 continue;
             };
             let shadow = format!("shadow-{slug}");
@@ -411,8 +436,6 @@ fn domain_council_finds_domains_field_and_source_tags() {
             "Shadow: Bob Example",
             "--as",
             "t",
-            "--field",
-            "tags=domain/engines",
             "--json",
         ],
     );
@@ -461,6 +484,41 @@ fn domain_council_finds_domains_field_and_source_tags() {
         Some(0),
         "{}",
         String::from_utf8_lossy(&source.stderr)
+    );
+    let created: Value = serde_json::from_slice(&source.stdout).expect("source json");
+    let source_rel = created["data"]["path"].as_str().expect("path");
+    let source_path = dir.path().join(source_rel);
+    let source_text = fs::read_to_string(&source_path).expect("source note");
+    let (front, _) = source_text.split_once("\n---\n").expect("frontmatter");
+    let body = "The engine is unfinished.\n";
+    assert!(!body.to_lowercase().contains("source"));
+    assert!(!source_rel
+        .rsplit('/')
+        .next()
+        .unwrap_or(source_rel)
+        .to_lowercase()
+        .contains("source"));
+    fs::write(&source_path, format!("{front}\n---\n{body}")).expect("rewrite body");
+    let missed = json_at(
+        dir.path(),
+        &[
+            "search",
+            "source",
+            "--type",
+            "source",
+            "--tag",
+            "domain/engines",
+            "--limit",
+            "10000",
+            "--json",
+        ],
+        0,
+    );
+    assert!(
+        data_hits(&missed)
+            .iter()
+            .all(|hit| hit["path"] != source_rel),
+        "search must miss the edited source: {missed}"
     );
 
     let capped = json_at(

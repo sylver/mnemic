@@ -180,14 +180,10 @@ mnemic search shadow --type shadow --limit 10000 --json
 mnemic get <shadow> --json
 ```
 
-Sources tagged `domain/<d>`. The query `source` matches the built-in source body. `get` each hit and keep every `shadow/<slug>` tag.
+Sources tagged `domain/<d>` when the shadow does not list `<d>` itself. Do not `search` for this set. `search` matches title, aliases, and body only, so an edited source whose title and body omit the query is missing. Read the frontmatter of each `<vault>/sources/*.md` file. Skip `sources/raw/`. Keep a file whose `tags` include `domain/<d>`. From those tags, take every `shadow/<slug>` and confirm the shadow:
 
 ```bash
-mnemic search source --type source --tag domain/<d> --limit 10000 --json
-```
-
-```bash
-mnemic get <source> --json
+mnemic get shadow-<slug> --json
 ```
 
 Fewer than two shadows: say the council needs at least two shadows, and stop. Write nothing.

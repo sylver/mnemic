@@ -6,7 +6,7 @@ One question, two or more shadows, then a moderator synthesis. Each shadow answe
 
 Use the shadows the user named. Resolve each name with `mnemic get` and keep the note only when `type` is `shadow`.
 
-When the user names a domain `<d>` and not the people, build the member set from three searches. There is no `list` subcommand. `search` requires a non-empty query, matches title, aliases, and body only, and returns at most `--limit` hits (default 20). Pass `--limit 10000`. If `data.hits` has that many rows, the page is full: add 10000 to the limit and run the same search again. Stop when the row count is below the limit. A full page is not a complete member set.
+When the user names a domain `<d>` and not the people, build the member set from the three sets below. There is no `list` subcommand. `search` requires a non-empty query, matches title, aliases, and body only, and returns at most `--limit` hits (default 20). Pass `--limit 10000` on sets 1 and 2. If `data.hits` has that many rows, the page is full: add 10000 to the limit and run the same search again. Stop when the row count is below the limit. A full page is not a complete member set.
 
 Union the slugs. One shadow found twice is one member.
 
@@ -28,14 +28,12 @@ mnemic search shadow --type shadow --limit 10000 --json
 mnemic get <shadow> --json
 ```
 
-3. Sources tagged `domain/<d>`. Create puts `domain/<d>` and `shadow/<slug>` on the source, not on the shadow. The query `source` matches the built-in source body `A source.` `get` each hit. From `frontmatter.tags`, take each tag `shadow/<slug>` and keep `<slug>` only when `mnemic get shadow-<slug> --json` returns type `shadow`.
+3. Sources tagged `domain/<d>`, for a shadow that does not list `<d>` in `domains` or `tags`. Create puts `domain/<d>` and `shadow/<slug>` on the source. Do not use `search` here. `--type source` does not put the type name in the index, and the query has to appear in the title, aliases, or body. A source whose body replaced `A source.` and whose title has no query token is omitted.
+
+Read the frontmatter of every `<vault>/sources/*.md` file. Do not open `sources/raw/`. Keep a file whose `tags` include `domain/<d>`. From those tags, take each `shadow/<slug>`. Keep `<slug>` only when this returns type `shadow`:
 
 ```bash
-mnemic search source --type source --tag domain/<d> --limit 10000 --json
-```
-
-```bash
-mnemic get <source> --json
+mnemic get shadow-<slug> --json
 ```
 
 Fewer than two distinct shadows: tell the user the council needs at least two shadows. Do not run the isolated passes. Do not write a note, a timeline line, or a commit.
