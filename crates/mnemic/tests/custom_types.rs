@@ -312,6 +312,181 @@ fn sha256_hex(path: &Path) -> String {
         .to_string()
 }
 
+fn data_hits(body: &Value) -> Vec<Value> {
+    body["data"]["hits"].as_array().expect("hits").clone()
+}
+
+/// Domain members the council skill would keep: tagged shadows, a `domains`
+/// entry, and `shadow/<slug>` tags on sources in that domain.
+fn domain_members(dir: &Path, domain: &str) -> Vec<String> {
+    let mut slugs = std::collections::BTreeSet::new();
+    let tag = format!("domain/{domain}");
+    let tagged = json_at(
+        dir,
+        &[
+            "search", "shadow", "--type", "shadow", "--tag", &tag, "--limit", "10000", "--json",
+        ],
+        0,
+    );
+    for hit in data_hits(&tagged) {
+        slugs.insert(hit["path"].as_str().expect("path").to_string());
+    }
+    let shadows = json_at(
+        dir,
+        &[
+            "search", "shadow", "--type", "shadow", "--limit", "10000", "--json",
+        ],
+        0,
+    );
+    for hit in data_hits(&shadows) {
+        let query = hit["path"].as_str().expect("path");
+        let note = json_at(dir, &["get", query, "--json"], 0);
+        let domains = note["data"]["frontmatter"]["domains"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        if domains.iter().any(|item| item.as_str() == Some(domain)) {
+            slugs.insert(query.to_string());
+        }
+    }
+    let sources = json_at(
+        dir,
+        &[
+            "search", "source", "--type", "source", "--tag", &tag, "--limit", "10000", "--json",
+        ],
+        0,
+    );
+    for hit in data_hits(&sources) {
+        let query = hit["path"].as_str().expect("path");
+        let note = json_at(dir, &["get", query, "--json"], 0);
+        let tags = note["data"]["frontmatter"]["tags"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        for tag in tags {
+            let Some(slug) = tag.as_str().and_then(|tag| tag.strip_prefix("shadow/")) else {
+                continue;
+            };
+            let shadow = format!("shadow-{slug}");
+            let member = json_at(dir, &["get", &shadow, "--json"], 0);
+            if member["data"]["type"] == "shadow" {
+                slugs.insert(member["data"]["slug"].as_str().expect("slug").to_string());
+            }
+        }
+    }
+    // Paths from the tagged search are not slugs yet.
+    let mut members = std::collections::BTreeSet::new();
+    for key in slugs {
+        let note = json_at(dir, &["get", &key, "--json"], 0);
+        assert_eq!(note["data"]["type"], "shadow");
+        members.insert(note["data"]["slug"].as_str().expect("slug").to_string());
+    }
+    members.into_iter().collect()
+}
+
+#[test]
+fn domain_council_finds_domains_field_and_source_tags() {
+    let dir = fixture_vault(true);
+    let set_ada = run(
+        dir.path(),
+        &[
+            "set",
+            "shadow-ada-example",
+            "--field",
+            "domains=engines",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        set_ada.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&set_ada.stderr)
+    );
+    let bob = run(
+        dir.path(),
+        &[
+            "new",
+            "shadow",
+            "Shadow: Bob Example",
+            "--as",
+            "t",
+            "--field",
+            "tags=domain/engines",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        bob.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&bob.stderr)
+    );
+    let cara = run(
+        dir.path(),
+        &[
+            "new",
+            "shadow",
+            "Shadow: Cara Example",
+            "--as",
+            "t",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        cara.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&cara.stderr)
+    );
+    let source = run(
+        dir.path(),
+        &[
+            "new",
+            "source",
+            "Bob engine note",
+            "--as",
+            "t",
+            "--url",
+            "https://example.com/bob",
+            "--field",
+            "tags=shadow/bob-example",
+            "--field",
+            "tags=domain/engines",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        source.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&source.stderr)
+    );
+
+    let capped = json_at(
+        dir.path(),
+        &[
+            "search", "shadow", "--type", "shadow", "--limit", "1", "--json",
+        ],
+        0,
+    );
+    assert_eq!(
+        data_hits(&capped).len(),
+        1,
+        "a short page is not the whole shadow set"
+    );
+
+    let members = domain_members(dir.path(), "engines");
+    assert_eq!(
+        members,
+        vec![
+            "shadow-ada-example".to_string(),
+            "shadow-bob-example".to_string()
+        ],
+        "{members:?}"
+    );
+}
+
 #[test]
 fn council_record_links_both_shadows_and_logs() {
     let dir = fixture_vault(true);

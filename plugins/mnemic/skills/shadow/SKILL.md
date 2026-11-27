@@ -162,13 +162,35 @@ Read [references/council.md](references/council.md) before a council. That file 
 
 A council asks one question of two or more shadows. The default is read-only. Write nothing, and do not commit, unless the user asks to save the council.
 
-1. Members are the shadows the user named. When they name a domain instead, search. `search` rejects an empty query, so the query is the word `shadow`, which every shadow title contains.
+1. Members are the shadows the user named. When they name a domain, collect three sets and deduplicate by slug. `search` rejects an empty query and defaults to 20 hits. Pass `--limit 10000`. When `data.hits` has that many rows, add 10000 to the limit and search again. Stop when the row count is below the limit. Details are in [references/council.md](references/council.md).
+
+Shadows tagged `domain/<d>`:
 
 ```bash
-mnemic search shadow --type shadow --tag domain/<d> --json
+mnemic search shadow --type shadow --tag domain/<d> --limit 10000 --json
 ```
 
-`get` each hit and keep notes whose type is `shadow`. Fewer than two shadows: say the council needs at least two shadows, and stop. Write nothing.
+Shadows whose `domains` field lists `<d>`. The query `shadow` matches every `Shadow:` title. `get` each hit and read `frontmatter.domains`.
+
+```bash
+mnemic search shadow --type shadow --limit 10000 --json
+```
+
+```bash
+mnemic get <shadow> --json
+```
+
+Sources tagged `domain/<d>`. The query `source` matches the built-in source body. `get` each hit and keep every `shadow/<slug>` tag.
+
+```bash
+mnemic search source --type source --tag domain/<d> --limit 10000 --json
+```
+
+```bash
+mnemic get <source> --json
+```
+
+Fewer than two shadows: say the council needs at least two shadows, and stop. Write nothing.
 
 2. One isolated pass per shadow. Use a subagent when the harness has them. A pass loads only that shadow and its matching sources. It never sees another shadow's pass. Follow the consult rules.
 
@@ -202,7 +224,7 @@ mnemic new note "Council: <question>" --as <actor> --field tags=council --json
 
 The note slug is the title run through the slug rules. Take it from `data.path`.
 
-5. One timeline line per member. `<date>` is the local date `YYYY-MM-DD`. The summary must not contain `|`.
+5. One timeline line per member. `<date>` is the local date `YYYY-MM-DD`. The summary must not contain `|`. When `<question>` contains `|`, replace each `|` with a space in the log summary only. The question in the note body stays unchanged.
 
 ```bash
 mnemic log shadow-<slug> "<date> | [[<council-slug>]] | council: <question>" --json

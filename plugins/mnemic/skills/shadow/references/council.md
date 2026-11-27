@@ -6,9 +6,39 @@ One question, two or more shadows, then a moderator synthesis. Each shadow answe
 
 Use the shadows the user named. Resolve each name with `mnemic get` and keep the note only when `type` is `shadow`.
 
-When the user names a domain and not the people, search. `search` requires a non-empty query. The query is the word `shadow` because every shadow title contains it. `--tag domain/<d>` is the domain filter. `--type shadow` drops sources that carry the same tag.
+When the user names a domain `<d>` and not the people, build the member set from three searches. There is no `list` subcommand. `search` requires a non-empty query, matches title, aliases, and body only, and returns at most `--limit` hits (default 20). Pass `--limit 10000`. If `data.hits` has that many rows, the page is full: add 10000 to the limit and run the same search again. Stop when the row count is below the limit. A full page is not a complete member set.
 
-Fewer than two shadows: tell the user the council needs at least two shadows. Do not fetch sources. Do not write a note, a timeline line, or a commit.
+Union the slugs. One shadow found twice is one member.
+
+1. Shadows that carry the tag `domain/<d>` on frontmatter `tags`:
+
+```bash
+mnemic search shadow --type shadow --tag domain/<d> --limit 10000 --json
+```
+
+The query `shadow` matches every title that starts with `Shadow:`.
+
+2. Shadows whose `domains` field lists `<d>`. Create stores domains there, not in `tags`. Search every shadow, then `get` each hit and keep it when `frontmatter.domains` contains `<d>` as one entry.
+
+```bash
+mnemic search shadow --type shadow --limit 10000 --json
+```
+
+```bash
+mnemic get <shadow> --json
+```
+
+3. Sources tagged `domain/<d>`. Create puts `domain/<d>` and `shadow/<slug>` on the source, not on the shadow. The query `source` matches the built-in source body `A source.` `get` each hit. From `frontmatter.tags`, take each tag `shadow/<slug>` and keep `<slug>` only when `mnemic get shadow-<slug> --json` returns type `shadow`.
+
+```bash
+mnemic search source --type source --tag domain/<d> --limit 10000 --json
+```
+
+```bash
+mnemic get <source> --json
+```
+
+Fewer than two distinct shadows: tell the user the council needs at least two shadows. Do not run the isolated passes. Do not write a note, a timeline line, or a commit.
 
 ## Isolated passes
 
