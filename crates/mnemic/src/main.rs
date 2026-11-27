@@ -48,9 +48,21 @@ fn main() -> ExitCode {
             id,
             actor,
             date,
+            path,
+            url,
             json,
             vault,
-        } => new_note(type_name, title, id, actor, date, json, vault),
+        } => new_note(NewArgs {
+            type_name,
+            title,
+            id,
+            actor,
+            date,
+            path,
+            url,
+            json,
+            vault,
+        }),
         Command::Mv {
             note,
             dest,
@@ -152,15 +164,30 @@ fn fatal_from_mv(err: MoveError) -> (EnvelopeCode, String, BTreeMap<String, Valu
     }
 }
 
-fn new_note(
+struct NewArgs {
     type_name: String,
     title: String,
     id: Option<String>,
     actor: Option<String>,
     date: Option<String>,
+    path: Option<String>,
+    url: Option<String>,
     json: bool,
     vault: Option<PathBuf>,
-) -> ExitCode {
+}
+
+fn new_note(args: NewArgs) -> ExitCode {
+    let NewArgs {
+        type_name,
+        title,
+        id,
+        actor,
+        date,
+        path,
+        url,
+        json,
+        vault,
+    } = args;
     let start = vault.unwrap_or_else(|| PathBuf::from("."));
     let mut ids = UlidGenerator::from_seed(random_seed());
     let result = create_note(NewRequest {
@@ -170,6 +197,8 @@ fn new_note(
         id: id.as_deref(),
         actor: actor.as_deref(),
         date: date.as_deref(),
+        path: path.as_deref(),
+        url: url.as_deref(),
         clock: &SystemClock,
         ids: &mut ids,
         lock_timeout: mnemic_core::write::DEFAULT_LOCK_TIMEOUT,

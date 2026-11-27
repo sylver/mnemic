@@ -148,6 +148,8 @@ The file lands in the type's pack folder. A `note` is unfiled, so it lands in `i
 
 `id` is a Crockford ULID from the seedable generator, or `--id` when that flag is itself a Crockford ULID. Anything else is `BAD_ID`. `created` and `updated` are the same RFC 3339 timestamp from the clock. `created_by` is `--as` or `actor` in `mnemic.toml`. With neither, `new` is `USAGE` and the message names both `--as` and `actor`. `status` is `active`. `new` does not write `visibility`.
 
+A `source` note takes `--path` and `--url`. At least one must be non-empty after trimming, and each non-empty value is written as frontmatter `path` or `url`. Other types reject those flags with `USAGE` and write no file. A `source` with neither locator is the same `USAGE` and writes no file.
+
 The same `--id` at the same path is a success no-op and does not rewrite the file. The same `--id` at a different path is `ID_EXISTS`. The new filename slug must not equal any other note's slug or alias, compared case-insensitively after NFC. That is `SLUG_COLLISION`, including a slug in another folder. Notes that already share a slug stay. `new` does not add another. The create is `O_EXCL` under the vault write lock. A destination that canonicalizes outside the vault is `OUTSIDE_VAULT` and is not written. `sources/raw/` is not a create destination.
 
 ## Vault overlays
